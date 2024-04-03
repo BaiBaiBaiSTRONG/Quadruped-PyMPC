@@ -33,11 +33,12 @@ elif(robot == 'hyqreal'):
 
 
 mpc_params = {
-    # 'nominal' optimized directly the GRF
+    # 'nominal' optimizes directly the GRF
     # 'input_rates' optimizes the delta GRF
     # 'sampling' is a gpu-based mpc that samples the GRF
     # 'collaborative' optimized directly the GRF and has a passive arm model inside 
-    'type': 'nominal',
+    # 'robust' optimizes the GRF, modifying the controller constraints given contacts uncertainties
+    'type': 'robust',
     
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
