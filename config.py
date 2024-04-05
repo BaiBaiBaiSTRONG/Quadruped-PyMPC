@@ -75,7 +75,7 @@ mpc_params = {
     'use_RTI': False,
     # If RTI is used, we can set the advance RTI-step! (Standard is the simpler RTI)
     # See https://arxiv.org/pdf/2403.07101.pdf
-    'as_rti_type': "AS-RTI-A",  # "AS-RTI-A", "AS-RTI-B", "AS-RTI-C", "AS-RTI-D", "Standard"
+    'as_rti_type': "Standard",  # "AS-RTI-A", "AS-RTI-B", "AS-RTI-C", "AS-RTI-D", "Standard"
     'as_rti_iter': 1, # > 0, the higher the better, but slower computation!
 
     # this is used only in the case 'use_RTI' is false in a single mpc feedback loop. 
@@ -100,7 +100,7 @@ mpc_params = {
 
     # ONLY ONE CAN BE TRUE AT A TIME (only gradient)
     'use_static_stability': False,
-    'use_zmp_stability': False,
+    'use_zmp_stability': True,
     'trot_stability_margin': 0.04,
     'pace_stability_margin': 0.1,
     'crawl_stability_margin': 0.04, #in general, 0.02 is a good value
@@ -114,6 +114,17 @@ mpc_params = {
     # this is used only in the case of collaborative mpc, to 
     # compensate for the external wrench in the prediction (only collaborative)
     'passive_arm_compensation': True,
+
+
+    # it is used to tightening the stability constraints (only robust)
+    'use_zero_order_robust_optimization': True,
+    'max_constraint_tightening': 0.60,
+    'state_covariance_propagation_num_step': 5,
+    'process_noise_propagation_num_step': 5,
+    'constraint_tightening_num_step':5,
+
+    # this is used to disable the tangential component of the GRF after a touchdown even (only robust)
+    'tangential_force_disable_num_step':  0,
 
     # ----- END properties for the gradient-based mpc -----
 
@@ -156,15 +167,15 @@ simulation_params = {
     'swing_position_gain_fb': 5000,
     'swing_velocity_gain_fb': 100,
     'swing_integral_gain_fb': 0,
-    'step_height': 0.05, #0.05 go2
+    'step_height': 0.15, #0.05 go2
 
     # this is the integration time used in the simulator
     'dt': 0.002,
 
-    'gait': 'trot', #'trot', 'pace', 'crawl', 'bound', 'full_stance'
+    'gait': 'crawl', #'trot', 'pace', 'crawl', 'bound', 'full_stance'
     
     # ref_x_dot, ref_y_dot, ref_yaw_dot are in the horizontal frame
-    'ref_x_dot': .3,
+    'ref_x_dot': .0,
     'ref_y_dot': 0.,
     'ref_yaw_dot': 0.0,
     'ref_z': ref_z, 
