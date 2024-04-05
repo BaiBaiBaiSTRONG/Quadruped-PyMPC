@@ -55,8 +55,8 @@ RUN echo 'export PS1="\[\e]0;\u@\h: \w\a\]${debian_chroot:+($debian_chroot)}\[\0
 
 
 # Add some usefull aliases
-RUN echo 'alias rviz="rosrun rviz rviz"' >> /root/.bashrc
-RUN echo 'alias plotjuggler="rosrun plotjuggler plotjuggler"' >> /root/.bashrc
+RUN echo 'alias run_rviz="rosrun rviz rviz"' >> /root/.bashrc
+RUN echo 'alias run_plotjuggler="rosrun plotjuggler plotjuggler"' >> /root/.bashrc
 
 
 # Set the working directory and source the bashrc file
