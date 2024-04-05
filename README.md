@@ -43,16 +43,15 @@ Gradient-based MPC: It uses [CasADI](https://web.casadi.org/) to define the mode
 
 ## Installation
 
-1. install [miniforge](https://github.com/conda-forge/miniforge/releases) (x86_64)
+1. clone **this** repo in src, and download all its submodule
+   
+   `git submodule update --init --recursive`
 
-2. create an environment using the file in the folder [installation/mamba](https://github.com/iit-DLSLab/Quadruped-PyMPC/tree/main/installation/mamba) choosing the file depending on your gpu (nvidia or integrated):
+2. install [miniforge](https://github.com/conda-forge/miniforge/releases) (x86_64)
+
+3. create an environment using the file in the folder [installation/mamba](https://github.com/iit-DLSLab/Quadruped-PyMPC/tree/main/installation/mamba) choosing the file depending on your gpu (nvidia or integrated):
 
     `conda env create -f mamba_environment.yml`
-
-
-3. clone the other submodules:
-
-    `git submodule update --init --recursive`
     
 4. activate the conda environment
 
