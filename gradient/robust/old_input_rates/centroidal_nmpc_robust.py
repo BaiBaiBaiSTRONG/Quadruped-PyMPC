@@ -8,6 +8,7 @@ import numpy as np
 import scipy.linalg
 import casadi as cs
 import copy
+from typing import Tuple
 
 import time
 
@@ -18,13 +19,21 @@ import sys
 sys.path.append(dir_path)
 sys.path.append(dir_path + '/../../')
 
-
-import config 
-
+import config
 
 # Class for the Acados NMPC, the model is in another file!
 class Acados_NMPC_Robust:
     def __init__(self):
+        """
+        Initialize the Centroidal_NMPC_Robust class.
+
+        Args:
+            horizon (int): Number of discretization steps.
+            dt (float): Time step duration.
+            use_RTI (bool): Flag indicating whether to use Real-Time Iteration.
+            use_warm_start (bool): Flag indicating whether to use warm start.
+            use_integrators (bool): Flag indicating whether to use integrators.
+        """
 
         self.horizon = config.mpc_params['horizon']  # Define the number of discretization steps
         self.dt = config.mpc_params['dt']
@@ -38,7 +47,6 @@ class Acados_NMPC_Robust:
         self.use_static_stability = config.mpc_params['use_static_stability']
         self.use_zmp_stability = config.mpc_params['use_zmp_stability']
         self.use_stability_constraints = self.use_static_stability or self.use_zmp_stability
-
         
         self.use_zero_order_robust_optimization = config.mpc_params['use_zero_order_robust_optimization']
         if(self.use_stability_constraints == False and self.use_zero_order_robust_optimization):
@@ -46,16 +54,23 @@ class Acados_NMPC_Robust:
             print("Disabling zero order robust optimization\n")
             self.use_zero_order_robust_optimization = False
 
+
+        self.use_input_prediction = config.mpc_params['use_input_prediction']
+
+
         
         self.previous_status = -1
         self.previous_contact_sequence = np.zeros((4, self.horizon))
         self.optimal_next_state = np.zeros((24,))
         self.previous_optimal_GRF = np.zeros((12,))
-
-
-
+  
 
         self.integral_errors = np.zeros((6,))
+
+        self.force_FL = np.zeros((3,))
+        self.force_FR = np.zeros((3,))
+        self.force_RL = np.zeros((3,))
+        self.force_RR = np.zeros((3,))
 
         
         # Create the class of the centroidal model and instantiate the acados model
@@ -77,18 +92,26 @@ class Acados_NMPC_Robust:
         for stage in range(self.horizon):
             self.acados_ocp_solver.set(stage, "u", np.zeros((self.inputs_dim,)))
 
+
         if(self.use_RTI or self.use_zero_order_robust_optimization):
             # first preparation phase
             self.acados_ocp_solver.options_set('rti_phase', 1)
-            status = self.acados_ocp_solver.solve()          
-            
+            status = self.acados_ocp_solver.solve()  
 
-        
 
 
 
     # Set cost, constraints and options 
     def create_ocp_solver_description(self, acados_model) -> AcadosOcp:
+        """
+        Creates and configures an optimal control problem (OCP) solver description. Acados STUFF!
+
+        Args:
+            acados_model: The acados model used in the OCP.
+
+        Returns:
+            ocp: The configured AcadosOcp object representing the OCP solver description.
+        """
         # Create ocp object to formulate the OCP
         ocp = AcadosOcp()
         ocp.model = acados_model
@@ -126,16 +149,12 @@ class Acados_NMPC_Robust:
         expr_h_friction, \
         self.constr_uh_friction, \
         self.constr_lh_friction =  self.create_friction_cone_constraints()
-        
+
         ocp.model.con_h_expr = expr_h_friction
         ocp.constraints.uh = self.constr_uh_friction
         ocp.constraints.lh = self.constr_lh_friction
-        ocp.model.con_h_expr_0 = expr_h_friction
-        ocp.constraints.uh_0 = self.constr_uh_friction
-        ocp.constraints.lh_0 = self.constr_lh_friction
         nsh = expr_h_friction.shape[0] 
         nsh_state_constraint_start = copy.copy(nsh)
-        
 
         if(self.use_foothold_constraints):
             expr_h_foot, \
@@ -147,7 +166,7 @@ class Acados_NMPC_Robust:
             ocp.constraints.lh = np.concatenate((ocp.constraints.lh, self.constr_lh_foot))
             nsh += expr_h_foot.shape[0]
 
-
+        
         # Set stability constraints       
         if(self.use_stability_constraints):
             self.nsh_stability_start = copy.copy(nsh)
@@ -161,10 +180,14 @@ class Acados_NMPC_Robust:
             nsh += expr_h_support_polygon.shape[0]
             self.nsh_stability_end = copy.copy(nsh)
 
+
         nsh_state_constraint_end = copy.copy(nsh)
 
-
         # Set slack variable configuration:
+        # WORKAROUND: The slack variables should not be used for the GRF, but we need to set them to avoid a bug
+        # The bug is that we cannot easily for now put a minimum force for the GRF now, since
+        # we have a 1 step delay and the constraints are not always respected..
+        nsh_state_constraint_start = 0
         num_state_cstr = nsh_state_constraint_end - nsh_state_constraint_start
         if(num_state_cstr > 0):
             ocp.constraints.lsh = np.zeros(num_state_cstr)             # Lower bounds on slacks corresponding to soft lower bounds for nonlinear constraints
@@ -195,22 +218,16 @@ class Acados_NMPC_Robust:
         init_contact_status = np.array([1., 1., 1., 1.])
         init_mu = np.array([0.5])
         init_stance_proximity = np.array([0, 0, 0, 0])
-        init_base_position = np.array([0, 0, 0])
+        init_base = np.array([0, 0, 0])
         init_base_yaw = np.array([0])
         init_external_wrench = np.array([0, 0, 0, 0, 0, 0])
-        init_stance_proximity_GRF = np.array([0, 0, 0, 0])
-        ocp.parameter_values = np.concatenate((init_contact_status, init_mu, init_stance_proximity, 
-                                               init_base_position, init_base_yaw, init_external_wrench,
-                                               init_stance_proximity_GRF))
-
-
-
+        ocp.parameter_values = np.concatenate((init_contact_status, init_mu, init_stance_proximity, init_base, init_base_yaw, init_external_wrench))
 
         # Set options
         ocp.solver_options.qp_solver = "PARTIAL_CONDENSING_HPIPM"  # FULL_CONDENSING_QPOASES PARTIAL_CONDENSING_OSQP PARTIAL_CONDENSING_HPIPM
         ocp.solver_options.hessian_approx = "GAUSS_NEWTON"  # 'GAUSS_NEWTON', 'EXACT'
         ocp.solver_options.integrator_type = "ERK" #ERK IRK GNSF DISCRETE
-        if(self.use_RTI or self.use_zero_order_robust_optimization):
+        if(self.use_RTI  or self.use_zero_order_robust_optimization):
             ocp.solver_options.nlp_solver_type = "SQP_RTI"  
             ocp.solver_options.nlp_solver_max_iter = 1
             # Set the RTI type for the advanced RTI method 
@@ -235,15 +252,16 @@ class Acados_NMPC_Robust:
         if(config.mpc_params['prioritize_speed']):
             ocp.solver_options.qp_solver_iter_max = 10
             ocp.solver_options.hpipm_mode = "SPEED"
+        #ocp.solver_options.globalization = "MERIT_BACKTRACKING"  # FIXED_STEP, MERIT_BACKTRACKING
+        #ocp.solver_options.qp_solver_iter_max = 40
         #ocp.solver_options.line_search_use_sufficient_descent = 1
+        #ocp.solver_options.hpipm_mode = "ROBUST"
         #ocp.solver_options.regularize_method = "PROJECT_REDUC_HESS"
         #ocp.solver_options.nlp_solver_ext_qp_res = 1
         ocp.solver_options.levenberg_marquardt = 1e-3
-        
 
         # Set prediction horizon
         ocp.solver_options.tf = self.T_horizon
-
 
 
         # Nonuniform discretization
@@ -254,7 +272,6 @@ class Acados_NMPC_Robust:
             for i in range(len(time_steps)):
                 shooting_nodes[i+1] = shooting_nodes[i] + time_steps[i]
             ocp.solver_options.shooting_nodes = shooting_nodes
-
 
 
         if(self.use_zero_order_robust_optimization):
@@ -273,6 +290,7 @@ class Acados_NMPC_Robust:
         
         return ocp
     
+
 
     # Create a constraint for  stability (COM, ZMP or CP inside support polygon)
     def create_stability_constraints(self,) -> None: 
@@ -306,10 +324,10 @@ class Acados_NMPC_Robust:
         else:
             # Compute the ZMP
             robotHeight = base_w[2]
-            foot_force_fl = self.centroidal_model.inputs[12:15]#@self.centroidal_model.param[0]
-            foot_force_fr = self.centroidal_model.inputs[15:18]#@self.centroidal_model.param[1]
-            foot_force_rl = self.centroidal_model.inputs[18:21]#@self.centroidal_model.param[2]
-            foot_force_rr = self.centroidal_model.inputs[21:24]#@self.centroidal_model.param[3]
+            foot_force_fl = self.centroidal_model.states[30:33]#@self.centroidal_model.param[0]
+            foot_force_fr = self.centroidal_model.states[33:36]#@self.centroidal_model.param[1]
+            foot_force_rl = self.centroidal_model.states[36:39]#@self.centroidal_model.param[2]
+            foot_force_rr = self.centroidal_model.states[39:42]#@self.centroidal_model.param[3]
             temp = foot_force_fl + foot_force_fr + foot_force_rl + foot_force_rr
             gravity = np.array([0, 0, -9.81])
             linear_com_acc = (1/self.centroidal_model.mass)@temp + gravity
@@ -337,7 +355,7 @@ class Acados_NMPC_Robust:
         
         #FL and FR cannot stay at the same x! #constrint should be less than zero
         constraint_FL_FR = x - (x_FR - x_FL)*(y - y_FL) / (y_FR - y_FL + 0.001) - x_FL 
-
+        
         #FR and RR cannot stay at the same y! #constraint should be bigger than zero
         constraint_FR_RR = y - (y_RR - y_FR)*(x - x_FR) / (x_RR - x_FR + 0.001) - y_FR 
         
@@ -379,12 +397,10 @@ class Acados_NMPC_Robust:
         ub[5] = 0
         lb[5] = -1000
 
-
         
         Jb = cs.vertcat(constraint_FL_FR, constraint_FR_RR,
                         constraint_RR_RL, constraint_RL_FL,
                         constraint_FL_RR, constraint_FR_RL)
-
         
 
         #create some casadi function for the derivative of the constraint if needed
@@ -407,9 +423,10 @@ class Acados_NMPC_Robust:
         self.constraint_FL_RR_jac_fun = cs.Function('constraint_FL_RR_jac_fun', [temp], [constraint_FL_RR_jac])
 
         constraint_FR_RL_jac = cs.jacobian(constraint_FR_RL, temp)
-        self.constraint_FR_RL_jac_fun = cs.Function('constraint_FR_RL_jac_fun', [temp], [constraint_FR_RL_jac])
+        self.constraint_FR_RL_jac_fun = cs.Function('constraint_FR_RL_jac_fun', [temp], [constraint_FR_RL_jac]) 
         
         return Jb, ub, lb
+
 
 
 
@@ -440,7 +457,7 @@ class Acados_NMPC_Robust:
 
 
         # and translate them using the robot base position
-        base = self.centroidal_model.base_position[0:3]
+        base = self.centroidal_model.base_initial[0:3]
 
         
 
@@ -468,8 +485,9 @@ class Acados_NMPC_Robust:
 
 
 
+
     # Create the friction cone constraint
-    def create_friction_cone_constraints(self,) ->None:  
+    def create_friction_cone_constraints(self,):  
         """
         This function calculates the symbolic friction cone constraints for the centroidal NMPC problem.
 
@@ -481,19 +499,9 @@ class Acados_NMPC_Robust:
         n = np.array([0, 0, 1])
         t = np.array([1, 0, 0])
         b = np.array([0, 1, 0])
-
-        """n = np.array([-0.5032, 0.0474, 0.869])
-        unitX = np.array([1, 0, 0])
-        t = cs.skew(unitX)@n
-        t = t/cs.norm_2(t)
-        b = cs.skew(n)@t
-        b = b/cs.norm_2(b)"""
-        
-
         mu = self.centroidal_model.mu_friction
         f_max = config.mpc_params['grf_max']
         f_min = config.mpc_params['grf_min']
-        
 
         # Derivation can be found in the paper
         # "High-slope terrain locomotion for torque-controlled quadruped robots",
@@ -524,10 +532,9 @@ class Acados_NMPC_Robust:
         Jbu[19, 9:12] = n
 
         # C matrix
-        Jbu = Jbu@cs.vertcat(self.centroidal_model.inputs[12:24])
+        Jbu = Jbu@cs.vertcat(self.centroidal_model.states[30:42])
 
         
-
         # lower bound (-1000 is "almost" -inf)
         lbu = np.zeros(20)
         lbu[0] = -10000000
@@ -554,43 +561,62 @@ class Acados_NMPC_Robust:
 
 
 
-    def set_weight(self, nx, nu):
-        # Define the weight matrices for the cost function
+
+
+    def set_weight(self, nx: int, nu: int):
+        """
+        Set the weight matrices for the optimization problem.
+
+        Args:
+            nx (int): Number of states.
+            nu (int): Number of control inputs.
+
+        Returns:
+            Tuple[np.ndarray, np.ndarray]: A tuple containing the Q and R matrices.
+
+        """
 
         Q_position = np.array([0, 0, 1500])   #x, y, z
         Q_velocity = np.array([200, 200, 200])   #x_vel, y_vel, z_vel
         Q_base_angle = np.array([500, 500, 0])  #roll, pitch, yaw
         Q_base_angle_rates = np.array([20, 20, 600]) #roll_rate, pitch_rate, yaw_rate
-        Q_foot_pos = np.array([300, 300, 300]) #f_x, f_y, f_z (should be 4 times this, once per foot)
+        Q_foot_pos = np.array([1000, 1000, 10000]) #f_x, f_y, f_z (should be 4 times this, once per foot)
         Q_com_position_z_integral = np.array([50]) #integral of z_com
         Q_com_velocity_x_integral = np.array([10]) #integral of x_com
         Q_com_velocity_y_integral = np.array([10]) #integral of y_com
         Q_com_velocity_z_integral = np.array([10]) #integral of z_com_vel
         Q_roll_integral_integral = np.array([10]) #integral of roll
         Q_pitch_integral_integral = np.array([10]) #integral of pitch
-
-
+        Q_foot_force = np.array([0.0001, 0.0001, 0.0001]) #f_x, f_y, f_z (should be 4 times this, once per foot)
+        
         R_foot_vel = np.array([0.0001, 0.0001, 0.00001]) #v_x, v_y, v_z (should be 4 times this, once per foot)
-        R_foot_force = np.array([0.001, 0.001, 0.001])#f_x, f_y, f_z (should be 4 times this, once per foot)
+        R_foot_rate_force = np.array([0.001, 0.001, 0.001]) #delta_f_x, delta_f_y, deltaf_z (should be 4 times this, once per foot)
 
         Q_mat = np.diag(np.concatenate((Q_position, Q_velocity, 
                                         Q_base_angle, Q_base_angle_rates, 
                                         Q_foot_pos, Q_foot_pos, Q_foot_pos, Q_foot_pos,
                                         Q_com_position_z_integral, Q_com_velocity_x_integral,
                                         Q_com_velocity_y_integral, Q_com_velocity_z_integral, 
-                                        Q_roll_integral_integral, Q_pitch_integral_integral)))
+                                        Q_roll_integral_integral, Q_pitch_integral_integral, 
+                                        Q_foot_force, Q_foot_force, Q_foot_force, Q_foot_force)))
         
         R_mat = np.diag(np.concatenate((R_foot_vel, R_foot_vel, R_foot_vel, R_foot_vel, 
-                                        R_foot_force, R_foot_force, R_foot_force, R_foot_force)))
+                                        R_foot_rate_force, R_foot_rate_force, R_foot_rate_force, R_foot_rate_force)))
 
         return Q_mat, R_mat
     
 
 
     def reset(self):
-        self.acados_ocp_solver.reset()
+        """
+        Resets the solver by calling the reset method of the acados_ocp_solver.
         
+        Returns:
+            None
+        """
+        self.acados_ocp_solver.reset()
     
+
 
 
     def tighten_constraints(self, state_acados, contact_sequence):
@@ -703,8 +729,6 @@ class Acados_NMPC_Robust:
                 self.acados_ocp_solver.constraints_set(j, "lh", self.lower_bound[j])
             
         return
-
-
 
 
     def set_stage_constraint(self, constraint, state, reference, contact_sequence, h_R_w, stance_proximity):
@@ -962,7 +986,7 @@ class Acados_NMPC_Robust:
 
 
             # We pass all the constraints (foothold and friction conte) to acados.
-            # Then one regarding friction are precomputed
+            # The one regarding friction are precomputed
             ub_friction = self.constr_uh_friction
             lb_friction = self.constr_lh_friction
 
@@ -1035,16 +1059,16 @@ class Acados_NMPC_Robust:
                         RL_contact_sequence[j] == 1 and 
                         RR_contact_sequence[j] == 1):
                         #FULL STANCE TODO
-                        ub_support_FL_FR = 1000
+                        ub_support_FL_FR = 0
                         lb_support_FL_FR = -1000
 
                         ub_support_FR_RR = 1000
-                        lb_support_FR_RR = -1000
+                        lb_support_FR_RR = 0
 
                         ub_support_RR_RL = 1000
-                        lb_support_RR_RL = -1000
+                        lb_support_RR_RL = 0
 
-                        ub_support_RL_FL = 1000
+                        ub_support_RL_FL = 0
                         lb_support_RL_FL = -1000
                         
                         ub_support_FL_RR = 1000
@@ -1120,6 +1144,7 @@ class Acados_NMPC_Robust:
 
 
 
+
                     ub_support = np.array([ub_support_FL_FR, ub_support_FR_RR, ub_support_RR_RL, ub_support_RL_FL,
                                             ub_support_FL_RR, ub_support_FR_RL])
                     lb_support = np.array([lb_support_FL_FR, lb_support_FR_RR, lb_support_RR_RL, lb_support_RL_FL,
@@ -1145,14 +1170,9 @@ class Acados_NMPC_Robust:
                         else:
                             continue
                 
-                # Only friction costraints at the beginning
-                if(j == 0):
-                    self.acados_ocp_solver.constraints_set(j, "uh", ub_friction)
-                    self.acados_ocp_solver.constraints_set(j, "lh", lb_friction)
                 if(j > 0):
                     self.acados_ocp_solver.constraints_set(j, "uh", ub_total)
                     self.acados_ocp_solver.constraints_set(j, "lh", lb_total)
-
 
 
                 #save the constraint for logging
@@ -1183,6 +1203,8 @@ class Acados_NMPC_Robust:
             print("###WARNING: error in setting the constraints")
 
         return
+    
+
 
 
 
@@ -1248,13 +1270,28 @@ class Acados_NMPC_Robust:
             self.acados_ocp_solver.set(j, "x", warm_start)
     
 
-
+    
+    
 
     # Main loop for computing the control
     def compute_control(self, state, reference, contact_sequence, constraint = None, 
                         external_wrenches = np.zeros((6,)), dt_after_touchdown = np.zeros((4, )), 
-                        external_state_covariance = np.zeros((30, 30)), 
-                        external_process_noise = np.zeros((30, 30))):
+                        external_state_covariance = np.zeros((42, 42)), 
+                        external_process_noise = np.zeros((42, 42))):
+        """
+        Compute the control action based on the current state, reference trajectory, contact sequence, and other parameters.
+
+        Args:
+            state (dict): Dictionary containing the current state of the system.
+            reference (dict): Dictionary containing the reference trajectory.
+            contact_sequence (list): List of contact sequences for each leg.
+            constraint (optional): Additional constraint for the control action. Defaults to None.
+            use_filtered_footholds (bool): Flag indicating whether to use filtered footholds. Defaults to False.
+
+        Returns:
+            control_action (ndarray): Array containing the computed control action.
+
+        """
 
             
         # Take the array of the contact sequence and split it in 4 arrays, 
@@ -1264,8 +1301,12 @@ class Acados_NMPC_Robust:
         RL_contact_sequence = contact_sequence[2]
         RR_contact_sequence = contact_sequence[3]
 
+        FL_previous_contact_sequence = self.previous_contact_sequence[0]
+        FR_previous_contact_sequence = self.previous_contact_sequence[1]
+        RL_previous_contact_sequence = self.previous_contact_sequence[2]
+        RR_previous_contact_sequence = self.previous_contact_sequence[3]
 
-
+  
 
         # Fill reference (self.states_dim+self.inputs_dim)
         idx_ref_foot_to_assign = np.array([0, 0, 0, 0])
@@ -1310,10 +1351,10 @@ class Acados_NMPC_Robust:
             reference_force_fr_z = reference_force_stance_legs * FR_contact_sequence[j]
             reference_force_rl_z = reference_force_stance_legs * RL_contact_sequence[j]
             reference_force_rr_z = reference_force_stance_legs * RR_contact_sequence[j]
-            yref[44] = reference_force_fl_z
-            yref[47] = reference_force_fr_z
-            yref[50] = reference_force_rl_z
-            yref[53] = reference_force_rr_z
+            yref[32] = reference_force_fl_z
+            yref[35] = reference_force_fr_z
+            yref[38] = reference_force_rl_z
+            yref[41] = reference_force_rr_z
             
             # Setting the reference to acados
             self.acados_ocp_solver.set(j, "yref", yref)
@@ -1329,6 +1370,10 @@ class Acados_NMPC_Robust:
         yref_N[15:18] = reference['ref_foot_FR'][idx_ref_foot_to_assign[1]]
         yref_N[18:21] = reference['ref_foot_RL'][idx_ref_foot_to_assign[2]]
         yref_N[21:24] = reference['ref_foot_RR'][idx_ref_foot_to_assign[3]]
+        yref_N[32] = reference_force_fl_z
+        yref_N[35] = reference_force_fr_z
+        yref_N[38] = reference_force_rl_z
+        yref_N[41] = reference_force_rr_z
         # Setting the reference to acados
         self.acados_ocp_solver.set(self.horizon, "yref", yref_N)
 
@@ -1384,9 +1429,8 @@ class Acados_NMPC_Robust:
 
 
 
-        # Stance Proximity ugly routine. Basically we disable foothold optimization
-        # in the proximity of a stance phase (the real foot cannot travel too fast in
-        # a small time!!)
+        # Stance Proximity GRF ugly routine. Basically we modify the friction cone
+        # after a touchdown to avoid the foot shrink the support poligon
         stance_proximity_GRF_FL = np.zeros((self.horizon, ))
         stance_proximity_GRF_FR = np.zeros((self.horizon, ))
         stance_proximity_GRF_RL = np.zeros((self.horizon, ))
@@ -1428,34 +1472,28 @@ class Acados_NMPC_Robust:
             stance_proximity_GRF_RR = stance_proximity_GRF_RR*0
 
 
+
         # Set the parameters to  acados
         for j in range(self.horizon):
+
             # If we have estimated an external wrench, we can compensate it for all steps
             # or less (maybe the disturbance is not costant along the horizon!)
-            if(config.mpc_params['external_wrenches_compensation'] and
-               config.mpc_params['external_wrenches_compensation_num_step'] and 
-               j < config.mpc_params['external_wrenches_compensation_num_step']):
+            if(j < config.mpc_params['external_wrenches_compensation_num_step']):
                 external_wrenches_estimated_param = copy.deepcopy(external_wrenches)
-                external_wrenches_estimated_param = external_wrenches_estimated_param.reshape((6, ))
             else:
                 external_wrenches_estimated_param = np.zeros((6,))
-            
-            
+
             param = np.array([FL_contact_sequence[j], FR_contact_sequence[j], 
                             RL_contact_sequence[j], RR_contact_sequence[j], mu, 
                             stance_proximity_FL[j],
                             stance_proximity_FR[j], 
                             stance_proximity_RL[j],
                             stance_proximity_RR[j],
-                            state["position"][0], state["position"][1], 
-                            state["position"][2], state["orientation"][2],
+                            state["position"][0], state["position"][1], state["position"][2],
+                            state["orientation"][2],
                             external_wrenches_estimated_param[0], external_wrenches_estimated_param[1],
                             external_wrenches_estimated_param[2], external_wrenches_estimated_param[3],
-                            external_wrenches_estimated_param[4], external_wrenches_estimated_param[5],
-                            stance_proximity_GRF_FL[j],
-                            stance_proximity_GRF_FR[j],
-                            stance_proximity_GRF_RL[j],
-                            stance_proximity_GRF_RR[j]])
+                            external_wrenches_estimated_param[4], external_wrenches_estimated_param[5]])
             self.acados_ocp_solver.set(j, "p", copy.deepcopy(param))
 
         
@@ -1477,6 +1515,7 @@ class Acados_NMPC_Robust:
             
         if(RR_contact_sequence[0] == 0):
             state["foot_RR"] = reference["ref_foot_RR"][0]
+
 
 
         if(self.use_integrators):
@@ -1503,8 +1542,8 @@ class Acados_NMPC_Robust:
             self.integral_errors[3] = np.where(np.abs(self.integral_errors[3]) > cap_integrator_z_dot, cap_integrator_z_dot*np.sign(self.integral_errors[3]), self.integral_errors[3])
             self.integral_errors[4] = np.where(np.abs(self.integral_errors[4]) > cap_integrator_roll, cap_integrator_roll*np.sign(self.integral_errors[4]), self.integral_errors[4])
             self.integral_errors[5] = np.where(np.abs(self.integral_errors[5]) > cap_integrator_pitch, cap_integrator_pitch*np.sign(self.integral_errors[5]), self.integral_errors[5])
+            print("self.integral_errors\n", self.integral_errors)
 
-            print("self.integral_errors: ", self.integral_errors)
 
 
         # Set initial state constraint acados, converting first the dictionary to np array
@@ -1512,14 +1551,16 @@ class Acados_NMPC_Robust:
                                 state["orientation"], state["angular_velocity"],
                                 state["foot_FL"], state["foot_FR"],
                                 state["foot_RL"], state["foot_RR"],
-                                self.integral_errors)).reshape((self.states_dim, 1))
+                                self.integral_errors,
+                                self.force_FL, 
+                                self.force_FR,
+                                self.force_RL,
+                                self.force_RR)).reshape((self.states_dim, 1))
+
         self.acados_ocp_solver.set(0, "lbx", state_acados)
         self.acados_ocp_solver.set(0, "ubx", state_acados)
 
 
-        # Set Warm start in case...
-        if(self.use_warm_start):
-            self.set_warm_start(state_acados, reference, FL_contact_sequence, FR_contact_sequence, RL_contact_sequence, RR_contact_sequence)
 
 
         # Set stage constraint
@@ -1530,18 +1571,27 @@ class Acados_NMPC_Robust:
             stance_proximity = np.vstack((stance_proximity_FL, stance_proximity_FR,
                                             stance_proximity_RL, stance_proximity_RR))
             self.set_stage_constraint(constraint, state, reference, contact_sequence, h_R_w, stance_proximity)
+            
 
-        
+
+
+        # Set Warm start in case...
+        if(self.use_warm_start):
+            self.set_warm_start(state_acados, reference, FL_contact_sequence, FR_contact_sequence, RL_contact_sequence, RR_contact_sequence)
+
+
+
+
         # Solve ocp via RTI, robust, or nominal ocp
         if self.use_RTI:
             # feedback phase
             self.acados_ocp_solver.options_set('rti_phase', 2)
             status = self.acados_ocp_solver.solve()
             print("feedback phase time: ", self.acados_ocp_solver.get_stats('time_tot'))
-        
+
         elif(self.use_zero_order_robust_optimization):
             # ZoRO stuff!
-            breakpoint()
+
             self.P0_mat = external_state_covariance
             self.W_mat = external_process_noise
 
@@ -1566,18 +1616,34 @@ class Acados_NMPC_Robust:
                 self.acados_ocp_solver.options_set('rti_phase', 2)
                 status = self.acados_ocp_solver.solve()
                 print("feedback phase time: ", self.acados_ocp_solver.get_stats('time_tot'))
-        
+
         else:
             status = self.acados_ocp_solver.solve()
             print("ocp time: ", self.acados_ocp_solver.get_stats('time_tot'))
 
 
-        # Take the solution        
         control = self.acados_ocp_solver.get(0, "u")
-        optimal_GRF = control[12:]
+        self.optimal_next_state = self.acados_ocp_solver.get(1, "x")[0:24]
+        
+        
+        if(self.use_input_prediction):
+            optimal_GRF = self.acados_ocp_solver.get(1, "x")[30:42]
+            self.force_FL = optimal_GRF[0:3]
+            self.force_FR = optimal_GRF[3:6]
+            self.force_RL = optimal_GRF[6:9]
+            self.force_RR = optimal_GRF[9:12]
+        else:
+            optimal_GRF = self.acados_ocp_solver.get(0, "x")[30:42]
+            optimal_next_GRF = self.acados_ocp_solver.get(1, "x")[30:42]
+            self.force_FL = optimal_next_GRF[0:3]
+            self.force_FR = optimal_next_GRF[3:6]
+            self.force_RL = optimal_next_GRF[6:9]
+            self.force_RR = optimal_next_GRF[9:12]
+
+
+
         optimal_foothold = np.zeros((4, 3))
         optimal_footholds_assigned = np.zeros((4, ), dtype='bool')
-
         
 
         # We need to provide the next touchdown foothold position.
@@ -1595,6 +1661,7 @@ class Acados_NMPC_Robust:
         if RR_contact_sequence[0] == 1:
             optimal_foothold[3] = state["foot_RR"]
             optimal_footholds_assigned[3] = True
+
 
 
 
@@ -1688,11 +1755,8 @@ class Acados_NMPC_Robust:
                 optimal_foothold[3][0:2] = h_R_w@(optimal_foothold[3][0:2] - state["position"][0:2])
                 optimal_foothold[3][0:2] = np.clip(optimal_foothold[3][0:2], first_low_constraint_RR[0:2], first_up_constraint_RR[0:2])
                 optimal_foothold[3][0:2] = h_R_w.T@optimal_foothold[3][0:2] + state["position"][0:2]
-
-
-
-
-
+                
+        
         # If in the prediction horizon, the foot is never in stance, we replicate the reference 
         #to not confuse the swing controller
         if(optimal_footholds_assigned[0] == False):
@@ -1703,13 +1767,8 @@ class Acados_NMPC_Robust:
             optimal_foothold[2] = reference["ref_foot_RL"][0]
         if(optimal_footholds_assigned[3] == False):
             optimal_foothold[3] = reference["ref_foot_RR"][0]
-                
-        
 
 
-
-        optimal_next_state = self.acados_ocp_solver.get(1, "x")[0:24]
-        self.optimal_next_state = optimal_next_state
         self.acados_ocp_solver.print_statistics()
         
 
@@ -1747,8 +1806,6 @@ class Acados_NMPC_Robust:
       
 
 
-
-
         # Save the previous optimal GRF, the previous status and the previous contact sequence
         self.previous_optimal_GRF = optimal_GRF
         self.previous_status = status
@@ -1756,8 +1813,5 @@ class Acados_NMPC_Robust:
 
 
 
-
-
-
         # Return the optimal GRF, the optimal foothold, the next state and the status of the optimization
-        return optimal_GRF, optimal_foothold, optimal_next_state, status
+        return optimal_GRF, optimal_foothold, self.optimal_next_state, status
