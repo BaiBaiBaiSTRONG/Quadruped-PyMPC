@@ -38,7 +38,7 @@ mpc_params = {
     # 'sampling' is a gpu-based mpc that samples the GRF
     # 'collaborative' optimized directly the GRF and has a passive arm model inside 
     # 'robust' optimizes the GRF, modifying the controller constraints given contacts uncertainties
-    'type': 'robust',
+    'type': 'nominal',
     
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
@@ -117,7 +117,7 @@ mpc_params = {
 
 
     # it is used to tightening the stability constraints (only robust)
-    'use_zero_order_robust_optimization': True,
+    'use_zero_order_robust_optimization': False,
     'max_constraint_tightening': 0.60,
     'state_covariance_propagation_num_step': 5,
     'process_noise_propagation_num_step': 5,
@@ -158,7 +158,7 @@ mpc_params = {
 if(robot == 'go2'):
     ref_z = 0.28
 elif(robot == 'aliengo'):
-    ref_z = 0.35
+    ref_z = 0.30
 elif(robot == 'hyqreal'):
     ref_z = 0.5
 
@@ -167,7 +167,7 @@ simulation_params = {
     'swing_position_gain_fb': 5000,
     'swing_velocity_gain_fb': 100,
     'swing_integral_gain_fb': 0,
-    'step_height': 0.15, #0.05 go2
+    'step_height': 0.10, #0.05 go2
 
     # this is the integration time used in the simulator
     'dt': 0.002,
@@ -175,7 +175,7 @@ simulation_params = {
     'gait': 'crawl', #'trot', 'pace', 'crawl', 'bound', 'full_stance'
     
     # ref_x_dot, ref_y_dot, ref_yaw_dot are in the horizontal frame
-    'ref_x_dot': .0,
+    'ref_x_dot': .2,
     'ref_y_dot': 0.,
     'ref_yaw_dot': 0.0,
     'ref_z': ref_z, 
@@ -184,11 +184,11 @@ simulation_params = {
 
     # the MPC will be called every 1/(mpc_frequency*dt) timesteps
     # this helps to evaluate more realistically the performance of the controller
-    'mpc_frequency': 200, 
+    'mpc_frequency': 120, 
 
 
     'use_external_disturbances': True,
-    'external_disturbances_bound': [18, 18, 0, 18, 18, 18], #fx, fy, fz, mx, my, mz
+    'external_disturbances_bound': [10, 10, 10, 10, 10, 10], #fx, fy, fz, mx, my, mz
 
     'use_print_debug': False,
     'use_visualization_debug': True,

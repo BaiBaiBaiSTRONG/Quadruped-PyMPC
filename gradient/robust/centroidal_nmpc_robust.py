@@ -1440,7 +1440,7 @@ class Acados_NMPC_Robust:
             else:
                 external_wrenches_estimated_param = np.zeros((6,))
             
-            
+
             param = np.array([FL_contact_sequence[j], FR_contact_sequence[j], 
                             RL_contact_sequence[j], RR_contact_sequence[j], mu, 
                             stance_proximity_FL[j],
@@ -1541,7 +1541,7 @@ class Acados_NMPC_Robust:
         
         elif(self.use_zero_order_robust_optimization):
             # ZoRO stuff!
-            breakpoint()
+            #breakpoint()
             self.P0_mat = external_state_covariance
             self.W_mat = external_process_noise
 
