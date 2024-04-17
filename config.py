@@ -42,8 +42,8 @@ mpc_params = {
     
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon': 12,
-    'dt': 0.02, 
+    'horizon': 15,
+    'dt': 0.04, 
 
     # GRF limits for each single leg
     "grf_max": mass*9.81,
@@ -99,8 +99,8 @@ mpc_params = {
     'use_input_prediction': False,
 
     # ONLY ONE CAN BE TRUE AT A TIME (only gradient)
-    'use_static_stability': False,
-    'use_zmp_stability': True,
+    'use_static_stability': True,
+    'use_zmp_stability': False,
     'trot_stability_margin': 0.04,
     'pace_stability_margin': 0.1,
     'crawl_stability_margin': 0.04, #in general, 0.02 is a good value

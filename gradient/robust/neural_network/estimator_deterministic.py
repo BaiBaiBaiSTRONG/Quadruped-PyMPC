@@ -21,20 +21,22 @@ import argparse
 class SFC(nn.Module):
     def __init__(self):
         super(SFC, self).__init__()
-
+        input_size = 195
         self.linear_relu_stack = nn.Sequential(
-            nn.Linear(39, 512),
+            nn.Linear(input_size, 512),
             nn.ReLU(),
-            nn.Linear(512, 512),
+            nn.Linear(512, 256),
             nn.ReLU(),
-            nn.Linear(512, 6),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 6),
         )
 
 
     def forward(self, x):
         x = self.linear_relu_stack(x)
-        output = F.tanh(x)
-        return output
+        x = F.tanh(x)
+        return x
 
 
 
@@ -43,17 +45,18 @@ def train(log_interval, model, device, train_loader, optimizer, epoch, tb_writer
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
+        
+        # zero the parameter gradients
         optimizer.zero_grad()
         
+        # forward + backward + optimize
         output = model(data)
-        mse_loss = F.mse_loss(output, target)
-        #print("output", output)
-        #print("target", target)
-        #ELBO loss
-        loss = mse_loss 
-
+        output = output.reshape((target.shape[0],1, 6))
+        target = target.reshape((target.shape[0],1, 6))
+        loss = F.mse_loss(output, target)
         loss.backward()
         optimizer.step()
+
 
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
@@ -73,6 +76,8 @@ def test(log_interval, model, device, test_loader, epoch, tb_writer=None):
         for data, target in test_loader:
             data, target = data.to(device), target.to(device)
             output = model(data)
+            output = output.reshape((target.shape[0],1,6))
+            target = target.reshape((target.shape[0],1,6))
             test_loss += F.mse_loss(output, target).item() 
             iteration += 1
 
@@ -81,7 +86,7 @@ def test(log_interval, model, device, test_loader, epoch, tb_writer=None):
     test_loss /= iteration
 
     print(
-        '\nTest set: Average loss: {:.6f}%)\n'.format(
+        '\nTest set: Average loss: {:.6f})\n'.format(
             test_loss ))
 
     
@@ -108,11 +113,11 @@ def cuncurrent_train(model):
     no_cuda = False
     seed = 1
     batch_size = 512
-    test_batch_size = 10000
+    test_batch_size = 512
     save_dir = './checkpoint/deterministic'
     lr = 0.001
-    epochs = 150
-    gamma = 0.7
+    epochs = 500
+    gamma = 0.1
     log_interval = 10
     mode = 'train'
 
@@ -125,14 +130,24 @@ def cuncurrent_train(model):
 
     tb_writer = None
 
+            # Load data 
+    with open('./data_estimator.npy', 'rb') as f:
+        x = np.load(f)
+        y = np.load(f)
+    from sklearn.model_selection import train_test_split
+ 
+    # train-test split for evaluation of the model
+    X_train, X_test, y_train, y_test = train_test_split(x, y, train_size=0.7, shuffle=True)
     
-    dataset = DisturbanceDataset()
     
-    train_loader = torch.utils.data.DataLoader(dataset,
+    dataset_train = DisturbanceDataset(X_train, y_train)
+    dataset_test = DisturbanceDataset(X_test, y_test)
+    
+    train_loader = torch.utils.data.DataLoader(dataset_train,
                                                batch_size=batch_size,
                                                shuffle=True,
                                                **kwargs)
-    test_loader = torch.utils.data.DataLoader(dataset,
+    test_loader = torch.utils.data.DataLoader(dataset_test,
                                               batch_size=test_batch_size,
                                               shuffle=False,
                                               **kwargs)
@@ -140,25 +155,30 @@ def cuncurrent_train(model):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 
-    #model = SFC()
-    #model = model.to(device)
+    model = SFC()
+    model = model.to(device)
 
     print(mode)
     if mode == 'train':
-
+        optimizer = optim.Adam(model.parameters(), lr=lr)
         for epoch in range(1, epochs + 1):
-            if (epoch < epochs / 2):
+            """if (epoch < epochs / 2):
                 optimizer = optim.Adadelta(model.parameters(), lr=lr)
             else:
                 optimizer = optim.Adadelta(model.parameters(), lr=lr / 10)
-            scheduler = StepLR(optimizer, step_size=1, gamma=gamma)
+            scheduler = StepLR(optimizer, step_size=1, gamma=gamma)"""
+
+            optimizer = optim.Adam(model.parameters(), lr=lr)
+            
             train(log_interval, model, device, train_loader, optimizer, epoch,
                   tb_writer)
             test(log_interval, model, device, test_loader, epoch, tb_writer)
-            scheduler.step()
+            #scheduler.step()
 
             torch.save(model.state_dict(),
                        save_dir + "/mnist_bayesian_scnn.pth")
+    
+    return model
 
 
 def main():

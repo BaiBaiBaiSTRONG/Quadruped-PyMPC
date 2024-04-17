@@ -139,7 +139,7 @@ if(gait == "trot"):
     duty_factor = 0.65
     p_gait = Gait.TROT
 elif(gait == "crawl"):
-    step_frequency = 0.6
+    step_frequency = 0.5
     duty_factor = 0.8
     p_gait = Gait.BACKDIAGONALCRAWL
 elif(gait == "pace"):
@@ -250,16 +250,18 @@ nmpc_predicted_state = None
 
 # Load NN module
 import torch
+import torch.nn.functional as F
 from estimator_deterministic import cuncurrent_train, SFC
 # Data for the dataset
 disturbance_wrench_predicted = np.zeros((6,))
 disturbance_wrench = np.zeros((6,))
 disturbance_wrench_old = np.zeros((6,))
-past_horizon = 1
-state_vec = np.zeros((past_horizon, 9))
-reference_vec = np.zeros((past_horizon, 9))
-wrenches_vec = np.zeros((past_horizon, 6)) # wrenches??
-state_old_vec = np.zeros((past_horizon, 9))
+past_horizon = 5
+state_history = np.zeros((past_horizon, 9))
+reference_history = np.zeros((past_horizon, 9))
+wrenches_history = np.zeros((past_horizon, 6))
+disturbance_wrench_predicted_history = np.zeros((past_horizon, 6))
+state_old_history = np.zeros((past_horizon, 9))
 maximum_step = 1000000
 training_step = maximum_step/100
 time_until_last_reset = 0
@@ -294,16 +296,16 @@ with mujoco.viewer.launch_passive(m, d, show_left_ui=False, show_right_ui=False)
                 #save!
                 np.save(f, data_x)
                 np.save(f, data_y)
-                cuncurrent_train(model_nn)
+                model_nn = cuncurrent_train(model_nn)
                 model_nn.eval()
                 force_reset = True
-                # here we should randomize mass, inertia, reference
-                reference_state["ref_position"] = np.array([0, 0, np.random.uniform(0.28, 0.35)])
-                reference_state["ref_linear_velocity"] = np.array([np.random.uniform(-0.2, 0.2), 0, 0])
-                reference_state["ref_orientation"] = np.array([0, 0, 0])
-                reference_state["ref_angular_velocity"] = np.array([0, 0, np.random.uniform(-0.2, 0.2)])
+                # here we should randomize mass, inertia
                 
-
+        if(i % 1000 == 0):
+            reference_state["ref_position"] = np.array([0, 0, np.random.uniform(0.28, 0.35)])
+            reference_state["ref_linear_velocity"] = np.array([np.random.uniform(-0.2, 0.2), 0, 0])
+            reference_state["ref_orientation"] = np.array([0, 0, 0])
+            reference_state["ref_angular_velocity"] = np.array([0, 0, np.random.uniform(-0.2, 0.2)])
             
 
 
@@ -412,7 +414,7 @@ with mujoco.viewer.launch_passive(m, d, show_left_ui=False, show_right_ui=False)
 
         # Add External Wrenches ---------------------------------------------------------------------
         if(config.simulation_params['use_external_disturbances']):
-            if(i % 1000 == 0):
+            if(i % 500 == 0):
                 disturbance_wrench_old = copy.deepcopy(disturbance_wrench)
                 disturbance_wrench_bound = config.simulation_params['external_disturbances_bound']
                 disturbance_wrench = np.array([np.random.uniform(-disturbance_wrench_bound[0], disturbance_wrench_bound[0]),
@@ -444,55 +446,85 @@ with mujoco.viewer.launch_passive(m, d, show_left_ui=False, show_right_ui=False)
         if(i % round(1/(mpc_frequency*simulation_dt)) == 0): 
 
             if(time_until_last_reset > time_to_wait_after_last_reset):
-                last_state =  np.zeros((1, 9))
-                last_state[0, 0] = state_current["position"][2] 
-                last_state[0, 1:4] = state_current["linear_velocity"][0:3] 
-                last_state[0, 4] = state_current["orientation"][0] 
-                last_state[0, 5] = state_current["orientation"][1] 
-                last_state[0, 6] = state_current["angular_velocity"][0]
-                last_state[0, 7] = state_current["angular_velocity"][1]
-                last_state[0, 8] = state_current["angular_velocity"][2]
-
-                state_vec = state_vec[:-1,:]
-                state_vec = np.concatenate((last_state, state_vec))
-
-                lasr_ref = np.zeros((1, 9))
-                lasr_ref[0, 0] = reference_old["ref_position"][2]
-                lasr_ref[0, 1:4] = reference_old["ref_linear_velocity"][0:3]
-                lasr_ref[0, 4] = reference_old["ref_orientation"][0]
-                lasr_ref[0, 5] = reference_old["ref_orientation"][1]
-                lasr_ref[0, 6] = reference_old["ref_angular_velocity"][0]
-                lasr_ref[0, 7] = reference_old["ref_angular_velocity"][1]
-                lasr_ref[0, 8] = reference_old["ref_angular_velocity"][2]
-
-                reference_vec = reference_vec[:-1,:]
-                reference_vec = np.concatenate((lasr_ref, reference_vec))
+                temp_state =  np.zeros((1, 9))
+                temp_state[0, 0] = state_current["position"][2] 
+                temp_state[0, 1:4] = state_current["linear_velocity"][0:3] 
+                temp_state[0, 4] = state_current["orientation"][0] 
+                temp_state[0, 5] = state_current["orientation"][1] 
+                temp_state[0, 6] = state_current["angular_velocity"][0]
+                temp_state[0, 7] = state_current["angular_velocity"][1]
+                temp_state[0, 8] = state_current["angular_velocity"][2]
 
 
-                last_state_old = np.zeros((1, 9))
-                last_state_old[0, 0] = state_old["position"][2]
-                last_state_old[0, 1:4] = state_old["linear_velocity"][0:3]
-                last_state_old[0, 4] = state_old["orientation"][0]
-                last_state_old[0, 5] = state_old["orientation"][1]
-                last_state_old[0, 6] = state_old["angular_velocity"][0]
-                last_state_old[0, 7] = state_old["angular_velocity"][1]
-                last_state_old[0, 8] = state_old["angular_velocity"][2]
+                state_history = state_history[:-1,:]
+                state_history = np.concatenate((temp_state, state_history))
+                state_history = copy.deepcopy(state_history)
 
-                state_old_vec = state_old_vec[:-1,:]
-                state_old_vec = np.concatenate((last_state_old, state_old_vec))
-                
-                x = copy.deepcopy(np.concatenate((state_vec, reference_vec, state_old_vec, nmpc_wrenches.reshape((1,6)), disturbance_wrench_predicted.reshape((1,6))), axis=1))
+
+
+
+                temp_ref = np.zeros((1, 9))
+                temp_ref[0, 0] = reference_old["ref_position"][2]
+                temp_ref[0, 1:4] = reference_old["ref_linear_velocity"][0:3]
+                temp_ref[0, 4] = reference_old["ref_orientation"][0]
+                temp_ref[0, 5] = reference_old["ref_orientation"][1]
+                temp_ref[0, 6] = reference_old["ref_angular_velocity"][0]
+                temp_ref[0, 7] = reference_old["ref_angular_velocity"][1]
+                temp_ref[0, 8] = reference_old["ref_angular_velocity"][2]
+
+                reference_history = reference_history[:-1,:]
+                reference_history = np.concatenate((temp_ref, reference_history))
+                reference_history = copy.deepcopy(reference_history)
+
+
+
+
+                temp_state_old = np.zeros((1, 9))
+                temp_state_old[0, 0] = state_old["position"][2]
+                temp_state_old[0, 1:4] = state_old["linear_velocity"][0:3]
+                temp_state_old[0, 4] = state_old["orientation"][0]
+                temp_state_old[0, 5] = state_old["orientation"][1]
+                temp_state_old[0, 6] = state_old["angular_velocity"][0]
+                temp_state_old[0, 7] = state_old["angular_velocity"][1]
+                temp_state_old[0, 8] = state_old["angular_velocity"][2]
+
+                state_old_history = state_old_history[:-1,:]
+                state_old_history = np.concatenate((temp_state_old, state_old_history))
+                state_old_history = copy.deepcopy(state_old_history)
+
+
+                temp_wrenches = copy.deepcopy(nmpc_wrenches.reshape((1,6)))
+                wrenches_history = wrenches_history[:-1,:]
+                wrenches_history = np.concatenate((temp_wrenches, wrenches_history))
+                wrenches_history = copy.deepcopy(wrenches_history)
+
+
+
+                disturbance_wrench_predicted_history = disturbance_wrench_predicted_history[:-1,:]
+                disturbance_wrench_predicted_history = np.concatenate((disturbance_wrench_predicted.reshape((1,6)), disturbance_wrench_predicted_history))
+                disturbance_wrench_predicted_history = copy.deepcopy(disturbance_wrench_predicted_history)
+
+
+                x = copy.deepcopy(np.concatenate((state_history, reference_history, state_old_history, wrenches_history, disturbance_wrench_predicted_history), axis=1))
                 data_x.append(copy.deepcopy(x))
                 data_y.append(copy.deepcopy(disturbance_wrench_old))
 
 
-                x[0][27:33] = x[0][27:33]/200.
+                x[:, 27:33] = x[:, 27:33]/200.
+                x = x.flatten()
                 x = torch.from_numpy(x).float()
                 x = x.to(device)
                 disturbance_wrench_predicted = model_nn.forward(x)*20.
-                disturbance_wrench_predicted = disturbance_wrench_predicted.cpu().detach().numpy()[0]
+                disturbance_wrench_predicted = disturbance_wrench_predicted.cpu().detach().numpy()
                 print("disturbance_wrench_predicted: ", disturbance_wrench_predicted)
                 print("disturbance_wrench_real: ", disturbance_wrench)
+
+
+                print("loss: ", F.mse_loss(torch.from_numpy(disturbance_wrench/20.).float(),torch.from_numpy(disturbance_wrench_predicted/20.).float()))
+                disturbance_wrench_predicted = disturbance_wrench_predicted*0.0
+
+
+                
                 
 
             time_start = time.time()
