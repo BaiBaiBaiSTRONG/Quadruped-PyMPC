@@ -10,27 +10,27 @@ with open('./data_sb_controller.npy', 'rb') as f:
 
 # HOW DID I SAVED THING??
 # temp_state =  np.zeros((1, 25))
-# temp_state[0, 0] = state_current["position"][0]
-# temp_state[0, 1] = state_current["position"][1]
-# temp_state[0, 2] = state_current["position"][2] 
-# temp_state[0, 3:6] = state_current["linear_velocity"][0:3] 
-# temp_state[0, 6] = state_current["orientation"][0] 
-# temp_state[0, 7] = state_current["orientation"][1] 
-# temp_state[0, 8] = state_current["orientation"][2]
-# temp_state[0, 9] = state_current["angular_velocity"][0]
-# temp_state[0, 10] = state_current["angular_velocity"][1]
-# temp_state[0, 11] = state_current["angular_velocity"][2]
-# temp_state[0, 12:15] = state_current["foot_FL"]
-# temp_state[0, 15:18] = state_current["foot_FR"]
-# temp_state[0, 18:21] = state_current["foot_RL"]
-# temp_state[0, 21:24] = state_current["foot_RR"]
+# temp_state[0, 0] = state_current["position"][0]   WORLD
+# temp_state[0, 1] = state_current["position"][1]   WORLD
+# temp_state[0, 2] = state_current["position"][2]   WORLD
+# temp_state[0, 3:6] = state_current["linear_velocity"][0:3] WORLD
+# temp_state[0, 6] = state_current["orientation"][0] WORLD
+# temp_state[0, 7] = state_current["orientation"][1] WORLD
+# temp_state[0, 8] = state_current["orientation"][2] WORLD
+# temp_state[0, 9] = state_current["angular_velocity"][0] BASE
+# temp_state[0, 10] = state_current["angular_velocity"][1] BASE
+# temp_state[0, 11] = state_current["angular_velocity"][2] BASE
+# temp_state[0, 12:15] = state_current["foot_FL"] WORLD
+# temp_state[0, 15:18] = state_current["foot_FR"] WORLD
+# temp_state[0, 18:21] = state_current["foot_RL"] WORLD
+# temp_state[0, 21:24] = state_current["foot_RR"] WORLD
 # temp_state[0, 24] = pgg.step_freq
 # data_state.append(copy.deepcopy(temp_state))
 
 
 # temp_ref = np.zeros((1, 22))
 # temp_ref[0, 0] = reference_state["ref_position"][2]
-# temp_ref[0, 1:4] = reference_state["ref_linear_velocity"][0:3]
+# temp_ref[0, 1:4] = reference_state["ref_linear_velocity"][0:3] WORLD - from a base one that is always costant here (0.4, 0, 0), but then is rotated in world
 # temp_ref[0, 4] = reference_state["ref_orientation"][0]
 # temp_ref[0, 5] = reference_state["ref_orientation"][1]
 # temp_ref[0, 6] = reference_state["ref_angular_velocity"][0]
@@ -45,10 +45,10 @@ with open('./data_sb_controller.npy', 'rb') as f:
 
 
 # temp_input = np.zeros((1, 24))
-# temp_input[0, 0:3] = nmpc_GRFs[0:3]
-# temp_input[0, 3:6] = nmpc_GRFs[3:6]
-# temp_input[0, 6:9] = nmpc_GRFs[6:9]
-# temp_input[0, 9:12] = nmpc_GRFs[9:12]
+# temp_input[0, 0:3] = nmpc_GRFs[0:3] WORLD
+# temp_input[0, 3:6] = nmpc_GRFs[3:6] WORLD
+# temp_input[0, 6:9] = nmpc_GRFs[6:9] WORLD
+# temp_input[0, 9:12] = nmpc_GRFs[9:12] WORLD
 # temp_input[0, 12:15] = tau_FL
 # temp_input[0, 15:18] = tau_FR
 # temp_input[0, 18:21] = tau_RL
@@ -57,6 +57,6 @@ with open('./data_sb_controller.npy', 'rb') as f:
 
 
 # temp_disturbance = np.zeros((1, 7))
-# temp_disturbance[0, 0:6] = disturbance_wrench
-# temp_disturbance[0, 6] = start_disturbance_boolean
+# temp_disturbance[0, 0:6] = disturbance_wrench WORLD
+# temp_disturbance[0, 6] = start_disturbance_boolean WORLD
 # data_external_disturbance.append(copy.deepcopy(temp_disturbance))
