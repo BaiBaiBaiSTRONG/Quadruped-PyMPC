@@ -206,30 +206,30 @@ class QuadrupedEnv(gym.Env):
         if qpos is None and qvel is None:  # Random initialization around xml keyframe 0
             mujoco.mj_resetDataKeyframe(self.mjModel, self.mjData, 0)
             # Add white noise to the joint-space position and velocity
-            q_pos_amp = 25 * np.pi / 180
-            q_vel_amp = 0.1
-            self.mjData.qpos[7:] += np.random.uniform(-q_pos_amp, q_pos_amp, self.mjModel.nq - 7)
-            self.mjData.qvel[6:] += np.random.uniform(-q_vel_amp, q_vel_amp, self.mjModel.nv - 6)
-            # Random orientation
-            ori_xyzw = Rotation.from_euler('xyz',
-                                           [np.random.uniform(-10 * np.pi / 180, 10 * np.pi / 180),
-                                            np.random.uniform(-10 * np.pi / 180, 10 * np.pi / 180),
-                                            np.random.uniform(-np.pi, np.pi)]).as_quat(canonical=True)
-            ori_wxyz = np.roll(ori_xyzw, 1)
-            self.mjData.qpos[3:7] = ori_wxyz
-            # Random xy position withing a 2 x 2 square
-            self.mjData.qpos[0:2] = np.random.uniform(-2, 2, 2)
+            # q_pos_amp = 25 * np.pi / 180
+            # q_vel_amp = 0.1
+            # self.mjData.qpos[7:] += np.random.uniform(-q_pos_amp, q_pos_amp, self.mjModel.nq - 7)
+            # self.mjData.qvel[6:] += np.random.uniform(-q_vel_amp, q_vel_amp, self.mjModel.nv - 6)
+            # # Random orientation
+            # ori_xyzw = Rotation.from_euler('xyz',
+            #                                [np.random.uniform(-10 * np.pi / 180, 10 * np.pi / 180),
+            #                                 np.random.uniform(-10 * np.pi / 180, 10 * np.pi / 180),
+            #                                 np.random.uniform(-np.pi, np.pi)]).as_quat(canonical=True)
+            # ori_wxyz = np.roll(ori_xyzw, 1)
+            # self.mjData.qpos[3:7] = ori_wxyz
+            # # Random xy position withing a 2 x 2 square
+            # self.mjData.qpos[0:2] = np.random.uniform(-2, 2, 2)
 
-            # Perform a forward dynamics computation to update the contact information
-            mujoco.mj_step1(self.mjModel, self.mjData)
-            # Check if the robot is in contact with the ground
-            contact_state, contacts = self.feet_contact_state()
-            while np.any(contact_state.to_list()):
-                all_contacts = list(itertools.chain(*contacts.to_list()))
-                max_penetration_distance = np.max([np.abs(contact.dist) for contact in all_contacts])
-                self.mjData.qpos[2] += max_penetration_distance * 1.1
-                mujoco.mj_step1(self.mjModel, self.mjData)
-                contact_state, contacts = self.feet_contact_state()
+            # # Perform a forward dynamics computation to update the contact information
+            # mujoco.mj_step1(self.mjModel, self.mjData)
+            # # Check if the robot is in contact with the ground
+            # contact_state, contacts = self.feet_contact_state()
+            # while np.any(contact_state.to_list()):
+            #     all_contacts = list(itertools.chain(*contacts.to_list()))
+            #     max_penetration_distance = np.max([np.abs(contact.dist) for contact in all_contacts])
+            #     self.mjData.qpos[2] += max_penetration_distance * 1.1
+            #     mujoco.mj_step1(self.mjModel, self.mjData)
+            #     contact_state, contacts = self.feet_contact_state()
         else:
             self.mjData.qpos = qpos
             self.mjData.qvel = qvel

@@ -19,8 +19,15 @@ from centroidal_model_jax import Centroidal_Model_JAX
 import time
 import copy
 
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import threading
+import itertools
 
+# import matplotlib
+# matplotlib.use('agg')
 
+first_call = True
 
 gpu_device = jax.devices('gpu')[0]
 cpu_device = jax.devices('cpu')[0]
@@ -210,6 +217,41 @@ class Sampling_MPC:
         self.jit_vectorized_rollout(initial_state, initial_reference, 
                                     self.control_parameters_vec.reshape(self.num_parallel_computations, self.num_control_parameters), 
                                     contact_sequence)
+        
+
+        # self.F_best_FL = jnp.zeros((3,4))
+        # self.F_best_FR = jnp.zeros((3,4))
+        # self.F_best_RL = jnp.zeros((3,4))
+        # self.F_best_RR = jnp.zeros((3,4))
+
+        self.F_best_FL = np.random.randn(3, 100)
+        self.F_best_FR = np.random.randn(3, 100)
+        self.F_best_RL = np.random.randn(3, 100)
+        self.F_best_RR = np.random.randn(3, 100)
+
+        # # Create Variable for the Live plot
+        # self.fig, self.ax = plt.subplots()
+
+        # # Plot lines and save them in a list
+        # self.line1, = self.ax.plot(self.F_best_FL[2,:], label='FL')
+        # self.line2, = self.ax.plot(self.F_best_FR[2,:], label='FR')
+        # self.line3, = self.ax.plot(self.F_best_RL[2,:], label='RL')
+        # self.line4, = self.ax.plot(self.F_best_RR[2,:], label='RR')
+        
+        # # Set limits and labels
+        # self.ax.set_xlim(0, 10)
+        # self.ax.set_ylim(-100, 100)  
+        # self.ax.set_xlabel('iteration')
+        # self.ax.set_ylabel('Force Z [N]')
+
+        # # Add a legend
+        # self.ax.legend()
+
+        # # plt.ion()
+        # plt.show(block=False)
+
+        # self.start()
+
 
             
     
@@ -391,10 +433,15 @@ class Sampling_MPC:
 
 
 
-            n_ = n_.at[0].set(n_[0]+1*contact_sequence[0][n])
-            n_ = n_.at[1].set(n_[1]+1*contact_sequence[1][n])
-            n_ = n_.at[2].set(n_[2]+1*contact_sequence[2][n])
-            n_ = n_.at[3].set(n_[3]+1*contact_sequence[3][n])
+            # n_ = n_.at[0].set(n_[0]+1*contact_sequence[0][n])
+            # n_ = n_.at[1].set(n_[1]+1*contact_sequence[1][n])
+            # n_ = n_.at[2].set(n_[2]+1*contact_sequence[2][n])
+            # n_ = n_.at[3].set(n_[3]+1*contact_sequence[3][n])
+
+            n_ = n_.at[0].set(n_[0]+1)
+            n_ = n_.at[1].set(n_[1]+1)
+            n_ = n_.at[2].set(n_[2]+1)
+            n_ = n_.at[3].set(n_[3]+1)
             
             f_x_FL, f_y_FL, f_z_FL = self.spline_fun_FL(control_parameters[0:self.num_control_parameters_single_leg], n_[0], FL_num_of_contact)
             f_x_FR, f_y_FR, f_z_FR = self.spline_fun_FR(control_parameters[self.num_control_parameters_single_leg:self.num_control_parameters_single_leg*2], n_[1], FR_num_of_contact)
@@ -592,6 +639,7 @@ class Sampling_MPC:
         best_control_parameters = np.array(best_control_parameters)
         
         if(previous_contact[0] == 1 and current_contact[0] == 0):
+            # breakpoint()
             best_control_parameters[0:self.num_control_parameters_single_leg] = 0.0
         if(previous_contact[1] == 1 and current_contact[1] == 0):
             best_control_parameters[self.num_control_parameters_single_leg:self.num_control_parameters_single_leg*2] = 0.0
@@ -662,6 +710,19 @@ class Sampling_MPC:
         best_control_parameters_RL = best_control_parameters[self.num_control_parameters_single_leg*2:self.num_control_parameters_single_leg*3]
         best_control_parameters_RR = best_control_parameters[self.num_control_parameters_single_leg*3:self.num_control_parameters_single_leg*4]
 
+        # jax.debug.breakpoint()
+        self.F_best_FL = np.asarray(best_control_parameters_FL[:12].reshape(3,4))
+        self.F_best_FR = np.asarray(best_control_parameters_FR[:12].reshape(3,4))
+        self.F_best_RL = np.asarray(best_control_parameters_RL[:12].reshape(3,4))
+        self.F_best_RR = np.asarray(best_control_parameters_RR[:12].reshape(3,4))
+
+        # print('flushing')
+        # self.F_best_FL = np.random.randn(3, 10)
+        np.savetxt("F_best_FL.csv", self.F_best_FL, delimiter=",")
+        np.savetxt("F_best_FR.csv", self.F_best_FR, delimiter=",")
+        np.savetxt("F_best_RL.csv", self.F_best_RL, delimiter=",")
+        np.savetxt("F_best_RR.csv", self.F_best_RR, delimiter=",")
+        # jax.debug.breakpoint()
 
         # Compute the GRF associated to the best parameter
         fx_FL, fy_FL, fz_FL = self.spline_fun_FL(best_control_parameters_FL, 0.0, 1)
@@ -726,7 +787,8 @@ class Sampling_MPC:
     def compute_control_mppi(self, state, reference, contact_sequence, best_control_parameters, key, timing, nominal_step_frequency, optimize_swing):
         """
         This function computes the control parameters by applying MPPI.
-        """          
+        """    
+        print('MPPI')      
         
         # Generate random parameters
         # The first control parameters is the old best one, so we add zero noise there
@@ -839,7 +901,7 @@ class Sampling_MPC:
         """
         This function computes the control parameters by applying CEM-MPPI.
         """          
-        
+        print('CEM MPPI')
         # Generate random parameters
         # The first control parameters is the old best one, so we add zero noise there
         additional_random_parameters = self.initial_random_parameters*0.0
@@ -952,3 +1014,44 @@ class Sampling_MPC:
         best_freq = 1.65
         
         return nmpc_GRFs, nmpc_footholds, best_control_parameters, best_cost, best_freq, costs, new_sigma_cem_mppi
+    
+
+    # def animate(self, frame):
+    #     global first_call
+
+    #     # if first_call :
+    #         # first_call=False
+    #     print('Animate : update plot')
+    #     self.F_best_FL = np.random.randn(3, 100)
+    #     self.F_best_FR = np.random.randn(3, 100)
+    #     self.F_best_RL = np.random.randn(3, 100)
+    #     self.F_best_RR = np.random.randn(3, 100)
+
+
+    #     self.line1.set_ydata(self.F_best_FL[2,:])
+    #     self.line2.set_ydata(self.F_best_FR[2,:])
+    #     self.line3.set_ydata(self.F_best_RL[2,:])
+    #     self.line4.set_ydata(self.F_best_RR[2,:])
+
+    #         # plt.draw()
+    #         # plt.pause(0.001)
+    #     # else :
+    #         # print('First call')
+    #         # first_call=True
+
+    #     return [self.line1, self.line2, self.line3, self.line4]
+
+    # def start_animation(self, interval=100):
+    #     print('Start Animation')
+    #     self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)#, cache_frame_data=False)
+    #     plt.show()
+    #     # plt.show(block=False)
+    #     # plt.draw()
+    #     # plt.pause(0.001)
+
+    # def start(self):
+    #     print('start : Create thread')
+    #     # self.start_animation()
+    #     threading.Thread(target=self.start_animation).start()
+    #     # threading.Thread(target=self.start_animation, daemon=True).start()
+    #     pass

@@ -53,11 +53,11 @@ mpc_params = {
     # 'input_rates' optimizes the delta GRF
     # 'sampling' is a gpu-based mpc that samples the GRF
     # 'collaborative' optimized directly the GRF and has a passive arm model inside
-    'type':                                    'nominal',
+    'type':                                    'sampling',
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 12,
+    'horizon':                                 5,
     'dt':                                      0.02,
 
     # GRF limits for each single leg
@@ -142,7 +142,7 @@ mpc_params = {
     # convariances for the sampling methods
     'sigma_cem_mppi':                          3,
     'sigma_mppi':                              3,
-    'sigma_random_sampling':                   [0.2, 3, 10],
+    'sigma_random_sampling':                   [5, 5, 5], #[0.2, 3, 20],
     'shift_solution':                          False,
 
     # ----- END properties for the sampling-based mpc -----
@@ -164,21 +164,21 @@ simulation_params = {
     'step_height':                 0.3 * hip_height,  # 0.05 go2
 
     # this is the integration time used in the simulator
-    'dt':                          0.002,
+    'dt':                          0.005,
 
     'gait':                        'trot',  # 'trot', 'pace', 'crawl', 'bound', 'full_stance'
 
     # velocity mode: human will give you the possibility to use the keyboard, the other are
     # forward only random linear-velocity, random will give you random linear-velocity and yaw-velocity
-    'mode':                        'human',  # 'human', 'forward', 'random'
+    'mode':                        'forward',  # 'human', 'forward', 'random'
     'ref_z':                       hip_height,
 
 
     # the MPC will be called every 1/(mpc_frequency*dt) timesteps
     # this helps to evaluate more realistically the performance of the controller
-    'mpc_frequency':               200,
+    'mpc_frequency':               100,#200,
 
-    'use_external_disturbances':   True,
+    'use_external_disturbances':   False,
 
     'external_disturbances_bound': [18, 18, 0, 18, 18, 18],  # fx, fy, fz, mx, my, mz
 

@@ -61,7 +61,6 @@ def get_gait_params(gait_type: str) -> [GaitType, float, float]:
 
 
 
-
 if __name__ == '__main__':
 
     robot_name = cfg.robot
@@ -81,9 +80,9 @@ if __name__ == '__main__':
                        legs_joint_names=LegsAttr(**robot_leg_joints),
                        scene=scene_name,
                        sim_dt=simulation_dt,
-                       base_lin_vel_range=(-4.0 * hip_height, 4.0 * hip_height),
-                       base_ang_vel_range=(-np.pi * 3 / 4, np.pi * 3 / 4),
-                       ground_friction_coeff_range=(0.3, 1.5),
+                       base_lin_vel_range=(-0.0 * hip_height, 0.0 * hip_height),#(-4.0 * hip_height, 4.0 * hip_height),
+                       base_ang_vel_range=(-0.0, 0.0),#(-np.pi * 3 / 4, np.pi * 3 / 4),
+                       ground_friction_coeff_range=(0.6,0.6),#(0.3, 1.5),
                        base_vel_command_type="human",  # "forward", "random", "human"
                        feet_geom_name=LegsAttr(**robot_feet_geom_names),  # Geom/Frame id of feet
                        state_obs_names=state_observables,
@@ -148,10 +147,10 @@ if __name__ == '__main__':
                                   control_parametrization=cfg.mpc_params['control_parametrization'],
                                   device="gpu")
         best_control_parameters = jnp.zeros((controller.num_control_parameters,))
-        jitted_compute_control = jax.jit(controller.compute_control, device=controller.device)
+        # jitted_compute_control = jax.jit(controller.compute_control, device=controller.device)
+        jitted_compute_control = controller.compute_control
         # jitted_get_key = jax.jit(controller.get_key, device=controller.device)
         jitted_prepare_state_and_reference = controller.prepare_state_and_reference
-
         index_shift = 0
 
     # Periodic gait generator _________________________________________________________________________
@@ -220,8 +219,18 @@ if __name__ == '__main__':
     RENDER_FREQ = 30  # Hz
     last_render_time = time.time()
 
+    height_list = [0.0]
+    height_ref_list = [0.0]
+    cost_list = [0.0]
+    FL_foot = [0.0]
+    FR_foot = [0.0]
+    RL_foot = [0.0]
+    RR_foot = [0.0]
+
+
     while True:
         step_start = time.time()
+        # breakpoint()
 
         # Update the robot state --------------------------------
         feet_pos = env.feet_pos(frame='world')
@@ -237,6 +246,22 @@ if __name__ == '__main__':
             foot_RL=feet_pos.RL,
             foot_RR=feet_pos.RR
             )
+        height_list.append(state_current['position'][2])
+        if len(height_list) > 100 : height_list.pop(0)
+        np.savetxt('height.csv', [height_list], delimiter=',', fmt='%.3f')
+
+        FL_foot.append(state_current['foot_FL'][2])
+        if len(FL_foot) > 100 : FL_foot.pop(0)
+        np.savetxt('FL_foot.csv', [FL_foot], delimiter=',', fmt='%.3f')
+        FR_foot.append(state_current['foot_FR'][2])
+        if len(FR_foot) > 100 : FR_foot.pop(0)
+        np.savetxt('FR_foot.csv', [FR_foot], delimiter=',', fmt='%.3f')
+        RL_foot.append(state_current['foot_RL'][2])
+        if len(RL_foot) > 100 : RL_foot.pop(0)
+        np.savetxt('RL_foot.csv', [RL_foot], delimiter=',', fmt='%.3f')
+        RR_foot.append(state_current['foot_RR'][2])
+        if len(RR_foot) > 100 : RR_foot.pop(0)
+        np.savetxt('RR_foot.csv', [RR_foot], delimiter=',', fmt='%.3f')
 
         # Update target base velocity
         ref_base_lin_vel, ref_base_ang_vel = env.target_base_vel()
@@ -279,6 +304,12 @@ if __name__ == '__main__':
 
         ref_pos = np.array([0, 0, cfg.hip_height])
         ref_pos[2] = cfg.simulation_params['ref_z'] + terrain_height
+
+        # print('Ref Height : ', ref_pos[2])
+        height_ref_list.append(ref_pos[2])
+        if len(height_ref_list) > 100 : height_ref_list.pop(0)
+        np.savetxt('height_ref.csv', [height_ref_list], delimiter=',', fmt='%.3f')
+
 
         # Update state reference ------------------------------------------------------------------------
         ref_state |= dict(ref_foot_FL=ref_feet_pos.FL.reshape((1, 3)),
@@ -381,6 +412,10 @@ if __name__ == '__main__':
                 previous_contact_mpc = current_contact
                 index_shift = 0
                 # optimizer_cost = best_cost
+
+                cost_list.append(best_cost)
+                if len(cost_list) > 100 : cost_list.pop(0)
+                np.savetxt('cost.csv', [cost_list], delimiter=',', fmt='%.3f')
 
             # If we use Gradient-Based MPC
             else:
@@ -531,3 +566,6 @@ if __name__ == '__main__':
             previous_contact = np.asarray(current_contact)
             z_foot_mean = 0.0
         # print("loop time: ", time.time() - step_start)
+
+        pass
+
