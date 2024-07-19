@@ -57,7 +57,7 @@ mpc_params = {
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 5,
+    'horizon':                                 15,
     'dt':                                      0.02,
 
     # GRF limits for each single leg
@@ -135,7 +135,7 @@ mpc_params = {
 
     # this is used only in the case 'sampling'.
     'sampling_method':                         'random_sampling',  # 'random_sampling', 'mppi', 'cem_mppi'
-    'control_parametrization':                 'cubic_spline',
+    'control_parametrization':                 'zero_order',
     # 'cubic_spline', 'linear_spline_1', 'linear_spline_2', 'zero_order'
     'num_parallel_computations':               5000,  # More is better, but slower computation!
     'num_sampling_iterations':                 1,  # More is better, but slower computation!
@@ -158,7 +158,7 @@ mpc_params = {
 
 simulation_params = {
     'swing_generator':             'scipy',  # 'scipy', 'explicit', 'ndcurves'
-    'swing_position_gain_fb':      5000,
+    'swing_position_gain_fb':      10000,#5000,
     'swing_velocity_gain_fb':      100,
     'swing_integral_gain_fb':      0,
     'step_height':                 0.3 * hip_height,  # 0.05 go2
@@ -190,6 +190,10 @@ simulation_params = {
     'use_kind_of_real_time':       True,
 
     'scene':                       'flat',  # flat, rough, stairs, suspend_stairs, slope, perlin, image
+
+    # Save Robot's variable in real time in 'live_variable' folder
+    # Can then be plotted in real time with live_plot_all.py script
+    'live_plot':                   True,
 
     }
 # -----------------------------------------------------------------------

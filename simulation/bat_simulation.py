@@ -67,6 +67,7 @@ def get_gait_params(gait_type: str) -> [GaitType, float, float]:
 
 import torch
 
+@torch.jit.script
 def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     """
     Given euler angles in  the XYZ convention (ie. roll pitch yaw), return the inverse conjugate euler rate matrix.
@@ -116,7 +117,7 @@ def inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle: torch.Tensor) -> to
 
     return inverse_conjugate_euler_xyz_rate_matrix
 
-
+@torch.jit.script
 def rotation_matrix_from_w_to_b(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
     """
     Return the rotation matrix to transform value from wolrd frame orientation to base frame oriention
@@ -168,6 +169,76 @@ def rotation_matrix_from_w_to_b(euler_xyz_angle: torch.Tensor) -> torch.Tensor:
 
     return rotation_matrix_from_w_to_b
 
+@torch.jit.script
+def jitted_centroidal_model_step(pos_com_lw:torch.Tensor, lin_com_vel_lw:torch.Tensor, euler_xyz_angle:torch.Tensor, ang_vel_com_b:torch.Tensor, p_lw_state:torch.Tensor, p_lw_input:torch.Tensor, F_lw:torch.Tensor, contact:torch.Tensor, robot_mass:float, gravity_lw:torch.Tensor, robot_inertia:torch.Tensor, inv_robot_inertia:torch.Tensor, dt:float):
+    """
+    TODO
+
+    Note 
+        Model used is described in 'Model Predictive Control With Environment Adaptation for Legged Locomotion'
+        ttps://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9564053
+        
+    Args : 
+        state     (dict): Dictionnary containing the robot's state
+            pos_com_lw      (tensor): CoM position in local world frame                             of shape(num_samples, 3)
+            lin_com_vel_lw  (tensor): CoM linear velocity in local world frame                      of shape(num_samples, 3)
+            euler_xyz_angle (tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(num_samples, 3)
+            ang_vel_com_b   (tensor): CoM angular velocity as roll pitch yaw                        of shape(num_samples, 3)
+            p_lw            (tensor): Feet position in local world frame                            of shape(num_samples, num_legs, 3)
+
+        input     (dict): Dictionnary containing the robot's input
+            p_lw            (tensor): Feet touch down position in local world frame                 of shape(num_samples, num_legs, 3)
+            F_lw            (tensor): Ground Reaction Forces in local world frame                   of shape(num_samples, num_legs, 3)
+
+        contact (tensor): Foot contact status (stance=1, swing=0)                                   of shape(num_samples, num_legs)
+
+    Return :
+        new_state (dict): Dictionnary containing the robot's updated state after one iteration
+            pos_com_lw      (tensor): CoM position in local world frame                             of shape(num_samples, 3)
+            lin_com_vel_lw  (tensor): CoM linear velocity in local world frame                      of shape(num_samples, 3)
+            euler_xyz_angle (tensor): CoM orientation (wrt. to l. world frame) as XYZ euler angle   of shape(num_samples, 3)
+            ang_vel_com_b   (tensor): CoM angular velocity as roll pitch yaw                        of shape(num_samples, 3)
+            p_lw            (tensor): Feet position in local world frame                            of shape(num_samples, num_legs, 3)
+    """
+    new_state = {}
+
+    # --- Step 1 : Compute linear velocity
+    lin_com_vel_lw = lin_com_vel_lw     # shape (num_samples, 3)
+
+
+    # --- Step 2 : Compute linear acceleration  as sum of forces divide by mass
+    linear_com_acc_lw = (torch.sum(F_lw * contact.unsqueeze(-1), dim=1) / robot_mass) + gravity_lw.unsqueeze(0) # shape (num_samples, 3)
+
+
+    # --- Step 3 : Compute angular velocity (as euler rate to increment euler angles) : Given by eq. 27 in 'Note' paper
+    # euler_xyz_rate = inverse(conjugate(euler_xyz_rate_matrix) * omega_b
+    euler_xyz_rate = torch.bmm(inverse_conjugate_euler_xyz_rate_matrix(euler_xyz_angle), ang_vel_com_b.unsqueeze(-1)).squeeze(-1 ) # shape (s,3,3)*(s,3,1)->(s,3,1) -> (num_samples, 3)
+
+
+    # --- Step 4 : Compute angular acceleration : Given by eq. 4 in 'Note' paper
+    # Compute the sum of the moment induced by GRF (1. Moment=dist_from_F cross F, 2. Keep moment only for feet in contact, 3. sum over 4 legs)
+    sum_of_GRF_moment_lw = torch.sum(contact.unsqueeze(-1) * torch.cross((p_lw_state - pos_com_lw.unsqueeze(1)), F_lw, dim=-1), dim=1) # shape sum{(s,l,1)*[(s,l,3)^(s,l,3)], dim=l} -> (num_sample, 3)
+
+    # Transform the sum of moment from local world frame to base frame
+    sum_of_GRF_moment_b  = torch.bmm(rotation_matrix_from_w_to_b(euler_xyz_angle), sum_of_GRF_moment_lw.unsqueeze(-1)).squeeze(-1) # shape(num_samples, 3)
+
+    # Compute intermediary variable : w_b^(I*w_b) : unsqueeze robot inertia for batched operation, squeeze and unsqueeze matmul to perform dot product (1,3,3)*(s,3,1)->(s,3,1)->(s,3)
+    omega_b_cross_inertia_dot_omega_b = torch.cross(ang_vel_com_b, torch.matmul(robot_inertia.unsqueeze(0), ang_vel_com_b.unsqueeze(-1)).squeeze(-1), dim=-1) # shape(num_samples, 3)
+
+    # Finally compute the angular acc : unsqueeze robot inertia for batched operation, squeeze and unsqueeze matmul to perform dot product (1,3,3)*(s,3,1)->(s,3,1)->(s,3)
+    ang_acc_com_b = torch.matmul(inv_robot_inertia.unsqueeze(0), (sum_of_GRF_moment_b - (omega_b_cross_inertia_dot_omega_b)).unsqueeze(-1)).squeeze(-1) # shape(num_samples, 3)
+
+
+    # --- Step 5 : Perform forward integration of the model (as simple forward euler)
+    new_pos_com_lw      = pos_com_lw      + dt*lin_com_vel_lw
+    new_lin_com_vel_lw  = lin_com_vel_lw  + dt*linear_com_acc_lw
+    new_euler_xyz_angle = euler_xyz_angle + dt*euler_xyz_rate
+    new_ang_vel_com_b   = ang_vel_com_b   + dt*ang_acc_com_b
+    new_p_lw            = p_lw_state
+    # new_state['p_lw']            = state['p_lw']*contact.unsqueeze(-1) + input['p_lw']*contact.unsqueeze(-1)
+
+    return new_pos_com_lw, new_lin_com_vel_lw, new_euler_xyz_angle, new_ang_vel_com_b, new_p_lw
+
 # ---------------------------------- Optimizer --------------------------------
 class SamplingOptimizer():
     """ Model Based optimizer based on the centroidal model """
@@ -189,6 +260,7 @@ class SamplingOptimizer():
         # General variables
         self.device = device
         self.num_legs = num_legs
+        self.data_type = torch.float32
         
         # Save Config
         self.cfg = optimizerCfg
@@ -225,11 +297,8 @@ class SamplingOptimizer():
         # TODO Get these value properly
         self.mu = optimizerCfg.mu
         self.gravity_lw = torch.tensor((0.0, 0.0, -9.81), device=self.device) # shape(3) #self._env.sim.cfg.gravity
-        # self.robot_mass = 24.64
-        self.robot_mass = 20.6380
-        self.robot_inertia = torch.tensor([[ 0.2310941359705289,   -0.0014987128245817424, -0.021400468992761768 ], # shape (3,3)
-                                           [-0.0014987128245817424, 1.4485084687476608,     0.0004641447134275615],
-                                           [-0.021400468992761768,  0.0004641447134275615,  1.503217877350808    ]],device=self.device)
+        self.robot_mass =  cfg.mass
+        self.robot_inertia = torch.from_numpy(cfg.inertia).to(dtype=self.data_type, device=self.device)
         self.inv_robot_inertia = torch.linalg.inv(self.robot_inertia) # shape(3,3)
         self.F_z_min = 0
         self.F_z_max = self.robot_mass*9.81
@@ -278,8 +347,8 @@ class SamplingOptimizer():
         self.R_vec = torch.zeros(self.input_dim, device=self.device)
 
         # Initialize the best solution
-        self.f_best = 1.4*torch.ones( (1,self.num_legs),                 device=device)
-        self.d_best = 0.6*torch.ones( (1,self.num_legs),                 device=device)
+        self.f_best = 2.5*torch.ones( (1,self.num_legs),                 device=device)
+        self.d_best = 0.65*torch.ones( (1,self.num_legs),                 device=device)
         self.p_best =     torch.zeros((1,self.num_legs,3,self.p_param ), device=device)
         self.F_best =     torch.zeros((1,self.num_legs,3,self.F_param ), device=device)
         self.F_best[:,:,2,:] = 100.0
@@ -299,7 +368,7 @@ class SamplingOptimizer():
         self.F_best[:,:,2,:] = 50.0
 
 
-    def optimize_latent_variable(self, state_current,ref_state, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def optimize_latent_variable(self, state_current,ref_state, f:torch.Tensor, d:torch.Tensor, p_lw:torch.Tensor, F_lw:torch.Tensor, phase:torch.Tensor, c_prev:torch.Tensor, height_map, contact_sequence:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """ Given latent variable f,d,F,p, returns f*,d*,F*,p*, optimized with a sampling optimization 
         
         Args :
@@ -325,7 +394,8 @@ class SamplingOptimizer():
             f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-            c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+            # c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+            c_samples = contact_sequence.unsqueeze(0).expand(self.num_samples, self.num_legs, self.sampling_horizon)
 
             # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:] + (c_samples.unsqueeze(-1)) * ((self.robot_mass*9.81) / torch.sum(c_samples, dim=1).unsqueeze(1))
 
@@ -388,7 +458,7 @@ class SamplingOptimizer():
         reference_seq_input_samples = {}
         action_param_samples = {}
 
-        data_type = torch.float32
+        data_type = self.data_type
 
 
         # ----- Step 1 : Retrieve the initial state
@@ -476,7 +546,7 @@ class SamplingOptimizer():
         d_star = d_samples[best_index].unsqueeze(0)           # shape(1, num_leg)
         c_star = c_samples[best_index].unsqueeze(0)           # shape(1, num_leg, sampling_horizon)
         p_star_lw = p_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, p_param)
-        F_star_lw = F_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, F_param)
+        F_star_lw = F_lw_samples[best_index].unsqueeze(0)     # shape(1, num_leg, 3, F_param)q
 
         if self.live_plot:
             np.savetxt("live_variable/F_best_FL.csv", F_star_lw[0,0,:,:].cpu().numpy(), delimiter=",")
@@ -486,38 +556,22 @@ class SamplingOptimizer():
 
         # Update previous best solution
         self.f_best, self.d_best, self.p_best, self.F_best = f_star, d_star, p_star_lw, F_star_lw
-        self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
+        # self.f_best, self.d_best, self.p_best, self.F_best = self.shift_actions(f=self.f_best, d=self.d_best, p=self.p_best, F=self.F_best)
 
         # reset the delta of the actions if contact ended (ie. started swing phase)
-        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with sim_dt, while c_star with mpc_dt : Thus, 
+        lift_off_mask = ((c_prev[:,:] == 1) * (c_star[:,:,0] == 0)) # shape (1,num_legs) # /!\ c_prev is incremented with si m_dt, while c_star with mpc_dt : Thus, 
         self.F_best[lift_off_mask] = 0.0
-        self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
-        print('lift off mask', lift_off_mask)
-
-        # # Retrive action to be applied at next time step
-        # # p : Foot touch Down
-        # if   self.cfg.parametrization_p == 'cubic spline':
-        #     p0_star_lw = p_star_lw[...,1]
-        # elif self.cfg.parametrization_p == 'discrete':
-        #     p0_star_lw = p_star_lw[...,0]
-
-        # # F : GRF
-        # if   self.cfg.parametrization_F == 'cubic spline':
-        #     F0_star_lw = F_star_lw[...,1]
-        # elif self.cfg.parametrization_F == 'discrete':
-        #     F0_star_lw = F_star_lw[...,0]
+        # self.F_best[lift_off_mask,:,2] = (self.robot_mass*9.81)/2 #(torch.sum(c_star[:,:,0]+1).clamp(min=1))
+        # print('lift off mask', lift_off_mask)
 
         # Retrive action to be applied at next time step
         p0_star_lw = self.interpolation_p(parameters=p_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
         F0_star_lw = self.interpolation_F(parameters=F_star_lw, step=0, horizon=self.sampling_horizon) # shape(1, num_legs, 3)
 
-        if self.optimize_f : print('f - cum. diff. : %3.2f' % torch.sum(torch.abs(f_star - f_samples[0,...])))
-        if self.optimize_d : print('d - cum. diff. : %3.2f' % torch.sum(torch.abs(d_star - d_samples[0,...])))
-        if self.optimize_p : print('p - cum. diff. : %3.2f' % torch.sum(torch.abs(p_star_lw - p_lw_samples[0,...])))
-        if self.optimize_F : print('F - cum. diff. : %5.1f' % torch.sum(torch.abs(F_star_lw - F_lw_samples[0,...])))
-
         # Add gravity compensation
-        # F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+        F0_star_lw -= c_star[:,:,0].unsqueeze(-1) * self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass / torch.sum(c_star[:,:,0].unsqueeze(0).unsqueeze(-1)) # shape(1, num_legs, 3)
+
+        print('F0 star', F0_star_lw)
 
         return f_star, d_star, p0_star_lw, F0_star_lw
 
@@ -579,7 +633,7 @@ class SamplingOptimizer():
         F_lw_samples = torch.cat((F_lw_samples_rl, F_lw_samples_best), dim=0)
 
         # Clamp the input to valid range
-        f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
+        # f_samples, d_samples, p_lw_samples, F_lw_samples = self.enforce_valid_input(f_samples=f_samples, d_samples=d_samples, p_lw_samples=p_lw_samples, F_lw_samples=F_lw_samples, height_map=height_map)
 
         # Set the foot height to the nominal foot height # TODO change
         p_lw_samples[:,:,2,:] = p_lw[0,:,2,:]
@@ -749,7 +803,7 @@ class SamplingOptimizer():
             contact = c_samples[:,:,i]                                                                                          # shape(num_samples, num_legs)
 
             # Add gravity compensation
-            # input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)     
+            input['F_lw'] -= contact.unsqueeze(-1) * (self.gravity_lw.unsqueeze(0).unsqueeze(0) * self.robot_mass) / torch.sum(contact, dim=1).unsqueeze(-1).unsqueeze(-1)     
 
             # Enforce force constraints (Friction cone constraints)
             # input['F_lw'] = self.enforce_friction_cone_constraints_torch(F=input['F_lw'], mu=self.mu)                           # shape(num_samples, num_legs, 3)
@@ -759,6 +813,8 @@ class SamplingOptimizer():
             new_state = self.centroidal_model_step(state=state, input=input, contact=contact)
             state = new_state
 
+            # Jitted Function
+            # state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'] = jitted_centroidal_model_step(state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'], input['p_lw'], input['F_lw'], contact, self.robot_mass, self.gravity_lw, self.robot_inertia, self.inv_robot_inertia, self.dt)
 
             # --- Step 3 : compute the step cost
             state_vector     = torch.cat([vector.view(self.num_samples, -1) for vector in state.values()], dim=1)               # Shape: (num_samples, state_dim)
@@ -927,7 +983,7 @@ class SamplingOptimizer():
 
         return roll, pitch, yaw
     
-
+    
     def centroidal_model_step(self, state, input, contact):
         """
         TODO
@@ -1040,7 +1096,7 @@ class OptimizerCfg():
         self.optimize_F: bool = True
         """ If enabled, Ground Reaction Forces will be optimized"""
 
-        self.propotion_previous_solution: float = 1.0
+        self.propotion_previous_solution: float = 0.5
         """ Proportion of the previous solution that will be used to generate samples"""
 
         self.num_optimizer_iterations: int = cfg.mpc_params['num_sampling_iterations'] #1
@@ -1116,12 +1172,16 @@ if __name__ == '__main__':
 
         controller = SamplingOptimizer(device=device,num_legs=num_legs, optimizerCfg=optimizerCfg)
 
-        f_fake = torch.empty((1,num_legs),device=device)
-        d_fake = torch.empty((1,num_legs),device=device)
-        p_fake = torch.empty((1,num_legs, 3, 4),device=device)
+        f_fake = 2.5*torch.ones((1,num_legs),device=device)
+        if cfg.simulation_params['gait'] == 'trot':
+            d_fake = 0.65*torch.ones((1,num_legs),device=device)
+        elif cfg.simulation_params['gait'] == 'full_stance':
+            d_fake = 1.0*torch.ones((1,num_legs),device=device)
+        p_fake = torch.zeros((1,num_legs, 3, 4),device=device)
         F_fake = torch.empty((1,num_legs, 3, 4),device=device)
         height_map = torch.empty((1,num_legs),device=device)
         phase = torch.zeros((1,num_legs), device=device)
+        phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0, 0.5]
         c_prev = torch.ones((1,4), device=device)
 
 
@@ -1130,8 +1190,11 @@ if __name__ == '__main__':
     gait_type, duty_factor, step_frequency = get_gait_params(gait_name)
     # Given the possibility to use nonuniform discretization, 
     # we generate a contact sequence two times longer and with a dt half of the one of the mpc
+    # pgg = PeriodicGaitGenerator(duty_factor=duty_factor, step_freq=step_frequency, gait_type=gait_type,
+    #                             horizon=horizon * 2, contact_sequence_dt=mpc_dt/2.)
     pgg = PeriodicGaitGenerator(duty_factor=duty_factor, step_freq=step_frequency, gait_type=gait_type,
-                                horizon=horizon * 2, contact_sequence_dt=mpc_dt/2.)
+                                horizon=horizon, contact_sequence_dt=mpc_dt)
+    
     contact_sequence = pgg.compute_contact_sequence()
     nominal_sample_freq = step_frequency
     
@@ -1320,14 +1383,17 @@ if __name__ == '__main__':
 
                 time_start = time.time()
 
-                f_star, d_star, p0_star_lw, F0_star_lw = controller.optimize_latent_variable(state_current=state_current,ref_state=ref_state, f=f_fake, d=d_fake, p_lw=p_fake, F_lw=F_fake, phase=phase, c_prev=c_prev, height_map=height_map)
+                # c_prev = torch.from_numpy(current_contact).to(dtype=torch.bool,device=controller.device).unsqueeze(0)
+                contact_sequence_torch = torch.from_numpy(contact_sequence).to(dtype=torch.bool, device=controller.device)
+
+                f_star, d_star, p0_star_lw, F0_star_lw = controller.optimize_latent_variable(state_current=state_current,ref_state=ref_state, f=f_fake, d=d_fake, p_lw=p_fake, F_lw=F_fake, phase=phase, c_prev=c_prev, height_map=height_map, contact_sequence=contact_sequence_torch)
                 
                 # update phase and contact sequence
                 f_samples = torch.tensor(([[1.4, 1.4, 1.4, 1.4]]), device=controller.device)
                 d_samples = torch.tensor(([[1.0, 1.0, 1.0, 1.0]]), device=controller.device)
-                c_samples2, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, simulation_dt)
+                _, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, simulation_dt)
                 phase = new_phase_samples
-                # c_prev=c_samples2.squeeze(-1)
+
                 c_prev = torch.from_numpy(current_contact).to(dtype=torch.bool,device=controller.device).unsqueeze(0)
 
                 nmpc_footholds = ref_feet_pos

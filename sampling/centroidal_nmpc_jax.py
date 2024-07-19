@@ -205,6 +205,7 @@ class Sampling_MPC:
         # jitting the vmap function!
         self.vectorized_rollout = jax.vmap(self.compute_rollout, in_axes=(None, None, 0, None), out_axes=0)
         self.jit_vectorized_rollout = jax.jit(self.vectorized_rollout, device=self.device)
+        # self.jit_vectorized_rollout = self.vectorized_rollout
 
         # the first call of jax is very slow, hence we should do this since the beginning 
         # creating a fake initial state, reference and contact sequence
@@ -214,9 +215,9 @@ class Sampling_MPC:
         
 
         self.control_parameters_vec = random.uniform(self.master_key, (self.num_control_parameters*self.num_parallel_computations, ), minval=-100., maxval=100.)
-        self.jit_vectorized_rollout(initial_state, initial_reference, 
-                                    self.control_parameters_vec.reshape(self.num_parallel_computations, self.num_control_parameters), 
-                                    contact_sequence)
+        # self.jit_vectorized_rollout(initial_state, initial_reference, 
+        #                             self.control_parameters_vec.reshape(self.num_parallel_computations, self.num_control_parameters), 
+        #                             contact_sequence)
         
 
         # self.F_best_FL = jnp.zeros((3,4))
@@ -229,28 +230,7 @@ class Sampling_MPC:
         self.F_best_RL = np.random.randn(3, 100)
         self.F_best_RR = np.random.randn(3, 100)
 
-        # # Create Variable for the Live plot
-        # self.fig, self.ax = plt.subplots()
 
-        # # Plot lines and save them in a list
-        # self.line1, = self.ax.plot(self.F_best_FL[2,:], label='FL')
-        # self.line2, = self.ax.plot(self.F_best_FR[2,:], label='FR')
-        # self.line3, = self.ax.plot(self.F_best_RL[2,:], label='RL')
-        # self.line4, = self.ax.plot(self.F_best_RR[2,:], label='RR')
-        
-        # # Set limits and labels
-        # self.ax.set_xlim(0, 10)
-        # self.ax.set_ylim(-100, 100)  
-        # self.ax.set_xlabel('iteration')
-        # self.ax.set_ylabel('Force Z [N]')
-
-        # # Add a legend
-        # self.ax.legend()
-
-        # # plt.ion()
-        # plt.show(block=False)
-
-        # self.start()
 
 
             
@@ -427,6 +407,7 @@ class Sampling_MPC:
         FR_num_of_contact = jnp.sum(contact_sequence[1])+1
         RL_num_of_contact = jnp.sum(contact_sequence[2])+1
         RR_num_of_contact = jnp.sum(contact_sequence[3])+1
+        # jax.debug.breakpoint()
 
         def iterate_fun(n, carry):
             cost, state, reference, n_ = carry
@@ -481,14 +462,14 @@ class Sampling_MPC:
             f_z_RR = f_z_RR*contact_sequence[3][n]
 
 
-            # Enforce force constraints
-            f_x_FL, f_y_FL, f_z_FL, \
-            f_x_FR, f_y_FR, f_z_FR, \
-            f_x_RL, f_y_RL, f_z_RL, \
-            f_x_RR, f_y_RR, f_z_RR = self.enforce_force_constraints(f_x_FL, f_y_FL, f_z_FL,
-                                                                    f_x_FR, f_y_FR, f_z_FR,
-                                                                    f_x_RL, f_y_RL, f_z_RL,
-                                                                    f_x_RR, f_y_RR, f_z_RR)
+            # # Enforce force constraints
+            # f_x_FL, f_y_FL, f_z_FL, \
+            # f_x_FR, f_y_FR, f_z_FR, \
+            # f_x_RL, f_y_RL, f_z_RL, \
+            # f_x_RR, f_y_RR, f_z_RR = self.enforce_force_constraints(f_x_FL, f_y_FL, f_z_FL,
+            #                                                         f_x_FR, f_y_FR, f_z_FR,
+            #                                                         f_x_RL, f_y_RL, f_z_RL,
+            #                                                         f_x_RR, f_y_RR, f_z_RR)
             
 
 
@@ -639,7 +620,6 @@ class Sampling_MPC:
         best_control_parameters = np.array(best_control_parameters)
         
         if(previous_contact[0] == 1 and current_contact[0] == 0):
-            # breakpoint()
             best_control_parameters[0:self.num_control_parameters_single_leg] = 0.0
         if(previous_contact[1] == 1 and current_contact[1] == 0):
             best_control_parameters[self.num_control_parameters_single_leg:self.num_control_parameters_single_leg*2] = 0.0
@@ -687,7 +667,7 @@ class Sampling_MPC:
         # Add sampling to the best old control parameters
         control_parameters_vec = best_control_parameters + additional_random_parameters
       
-
+        # breakpoint()
         
         # Do rollout
         costs = self.jit_vectorized_rollout(state, reference, control_parameters_vec, contact_sequence)
@@ -710,19 +690,6 @@ class Sampling_MPC:
         best_control_parameters_RL = best_control_parameters[self.num_control_parameters_single_leg*2:self.num_control_parameters_single_leg*3]
         best_control_parameters_RR = best_control_parameters[self.num_control_parameters_single_leg*3:self.num_control_parameters_single_leg*4]
 
-        # jax.debug.breakpoint()
-        self.F_best_FL = np.asarray(best_control_parameters_FL[:12].reshape(3,4))
-        self.F_best_FR = np.asarray(best_control_parameters_FR[:12].reshape(3,4))
-        self.F_best_RL = np.asarray(best_control_parameters_RL[:12].reshape(3,4))
-        self.F_best_RR = np.asarray(best_control_parameters_RR[:12].reshape(3,4))
-
-        # print('flushing')
-        # self.F_best_FL = np.random.randn(3, 10)
-        np.savetxt("live_variable/F_best_FL.csv", self.F_best_FL, delimiter=",")
-        np.savetxt("live_variable/F_best_FR.csv", self.F_best_FR, delimiter=",")
-        np.savetxt("live_variable/F_best_RL.csv", self.F_best_RL, delimiter=",")
-        np.savetxt("live_variable/F_best_RR.csv", self.F_best_RR, delimiter=",")
-        # jax.debug.breakpoint()
 
         # Compute the GRF associated to the best parameter
         fx_FL, fy_FL, fz_FL = self.spline_fun_FL(best_control_parameters_FL, 0.0, 1)
@@ -759,13 +726,13 @@ class Sampling_MPC:
 
 
         # Enforce force constraints
-        fx_FL, fy_FL, fz_FL, \
-        fx_FR, fy_FR, fz_FR, \
-        fx_RL, fy_RL, fz_RL, \
-        fx_RR, fy_RR, fz_RR =self.enforce_force_constraints(fx_FL, fy_FL, fz_FL,
-                                                            fx_FR, fy_FR, fz_FR,
-                                                            fx_RL, fy_RL, fz_RL,
-                                                            fx_RR, fy_RR, fz_RR)
+        # fx_FL, fy_FL, fz_FL, \
+        # fx_FR, fy_FR, fz_FR, \
+        # fx_RL, fy_RL, fz_RL, \
+        # fx_RR, fy_RR, fz_RR =self.enforce_force_constraints(fx_FL, fy_FL, fz_FL,
+        #                                                     fx_FR, fy_FR, fz_FR,
+        #                                                     fx_RL, fy_RL, fz_RL,
+        #                                                     fx_RR, fy_RR, fz_RR)
         
 
 
@@ -1015,43 +982,3 @@ class Sampling_MPC:
         
         return nmpc_GRFs, nmpc_footholds, best_control_parameters, best_cost, best_freq, costs, new_sigma_cem_mppi
     
-
-    # def animate(self, frame):
-    #     global first_call
-
-    #     # if first_call :
-    #         # first_call=False
-    #     print('Animate : update plot')
-    #     self.F_best_FL = np.random.randn(3, 100)
-    #     self.F_best_FR = np.random.randn(3, 100)
-    #     self.F_best_RL = np.random.randn(3, 100)
-    #     self.F_best_RR = np.random.randn(3, 100)
-
-
-    #     self.line1.set_ydata(self.F_best_FL[2,:])
-    #     self.line2.set_ydata(self.F_best_FR[2,:])
-    #     self.line3.set_ydata(self.F_best_RL[2,:])
-    #     self.line4.set_ydata(self.F_best_RR[2,:])
-
-    #         # plt.draw()
-    #         # plt.pause(0.001)
-    #     # else :
-    #         # print('First call')
-    #         # first_call=True
-
-    #     return [self.line1, self.line2, self.line3, self.line4]
-
-    # def start_animation(self, interval=100):
-    #     print('Start Animation')
-    #     self.ani = FuncAnimation(self.fig, self.animate, frames=itertools.count(), blit=True, interval=interval)#, cache_frame_data=False)
-    #     plt.show()
-    #     # plt.show(block=False)
-    #     # plt.draw()
-    #     # plt.pause(0.001)
-
-    # def start(self):
-    #     print('start : Create thread')
-    #     # self.start_animation()
-    #     threading.Thread(target=self.start_animation).start()
-    #     # threading.Thread(target=self.start_animation, daemon=True).start()
-    #     pass

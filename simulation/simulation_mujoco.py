@@ -147,8 +147,8 @@ if __name__ == '__main__':
                                   control_parametrization=cfg.mpc_params['control_parametrization'],
                                   device="gpu")
         best_control_parameters = jnp.zeros((controller.num_control_parameters,))
-        # jitted_compute_control = jax.jit(controller.compute_control, device=controller.device)
-        jitted_compute_control = controller.compute_control
+        jitted_compute_control = jax.jit(controller.compute_control, device=controller.device)
+        # jitted_compute_control = controller.compute_control
         # jitted_get_key = jax.jit(controller.get_key, device=controller.device)
         jitted_prepare_state_and_reference = controller.prepare_state_and_reference
         index_shift = 0
@@ -158,8 +158,12 @@ if __name__ == '__main__':
     gait_type, duty_factor, step_frequency = get_gait_params(gait_name)
     # Given the possibility to use nonuniform discretization, 
     # we generate a contact sequence two times longer and with a dt half of the one of the mpc
+    # pgg = PeriodicGaitGenerator(duty_factor=duty_factor, step_freq=step_frequency, gait_type=gait_type,
+    #                             horizon=horizon * 2, contact_sequence_dt=mpc_dt/2.)
+    
     pgg = PeriodicGaitGenerator(duty_factor=duty_factor, step_freq=step_frequency, gait_type=gait_type,
-                                horizon=horizon * 2, contact_sequence_dt=mpc_dt/2.)
+                                horizon=horizon, contact_sequence_dt=mpc_dt)
+    
     contact_sequence = pgg.compute_contact_sequence()
     nominal_sample_freq = step_frequency
     
@@ -250,22 +254,23 @@ if __name__ == '__main__':
             foot_RL=feet_pos.RL,
             foot_RR=feet_pos.RR
             )
-        height_list.append(state_current['position'][2])
-        if len(height_list) > 100 : height_list.pop(0)
-        np.savetxt('live_variable/height.csv', [height_list], delimiter=',', fmt='%.3f')
-
-        FL_foot_list.append(state_current['foot_FL'])
-        if len(FL_foot_list) > 100 : FL_foot_list.pop(0)
-        np.savetxt('live_variable/FL_foot.csv', FL_foot_list, delimiter=',', fmt='%.3f')
-        FR_foot_list.append(state_current['foot_FR'])
-        if len(FR_foot_list) > 100 : FR_foot_list.pop(0)
-        np.savetxt('live_variable/FR_foot.csv', FR_foot_list, delimiter=',', fmt='%.3f')
-        RL_foot_list.append(state_current['foot_RL'])
-        if len(RL_foot_list) > 100 : RL_foot_list.pop(0)
-        np.savetxt('live_variable/RL_foot.csv', RL_foot_list, delimiter=',', fmt='%.3f')
-        RR_foot_list.append(state_current['foot_RR'])
-        if len(RR_foot_list) > 100 : RR_foot_list.pop(0)
-        np.savetxt('live_variable/RR_foot.csv', RR_foot_list, delimiter=',', fmt='%.3f')
+        
+        if cfg.simulation_params['live_plot']:
+            height_list.append(state_current['position'][2])
+            if len(height_list) > 100 : height_list.pop(0)
+            np.savetxt('live_variable/height.csv', [height_list], delimiter=',', fmt='%.3f')
+            FL_foot_list.append(state_current['foot_FL'])
+            if len(FL_foot_list) > 100 : FL_foot_list.pop(0)
+            np.savetxt('live_variable/FL_foot.csv', FL_foot_list, delimiter=',', fmt='%.3f')
+            FR_foot_list.append(state_current['foot_FR'])
+            if len(FR_foot_list) > 100 : FR_foot_list.pop(0)
+            np.savetxt('live_variable/FR_foot.csv', FR_foot_list, delimiter=',', fmt='%.3f')
+            RL_foot_list.append(state_current['foot_RL'])
+            if len(RL_foot_list) > 100 : RL_foot_list.pop(0)
+            np.savetxt('live_variable/RL_foot.csv', RL_foot_list, delimiter=',', fmt='%.3f')
+            RR_foot_list.append(state_current['foot_RR'])
+            if len(RR_foot_list) > 100 : RR_foot_list.pop(0)
+            np.savetxt('live_variable/RR_foot.csv', RR_foot_list, delimiter=',', fmt='%.3f')
 
         # Update target base velocity
         ref_base_lin_vel, ref_base_ang_vel = env.target_base_vel()
@@ -411,7 +416,7 @@ if __name__ == '__main__':
 
 
                 print('sampling time : ', time.time() - time_start)
-                
+
                 nmpc_footholds = ref_feet_pos
 
                 nmpc_GRFs = np.array(nmpc_GRFs)
@@ -420,9 +425,19 @@ if __name__ == '__main__':
                 index_shift = 0
                 # optimizer_cost = best_cost
 
-                cost_list.append(best_cost)
-                if len(cost_list) > 100 : cost_list.pop(0)
-                np.savetxt('live_variable/cost.csv', [cost_list], delimiter=',', fmt='%.3f')
+                if cfg.simulation_params['live_plot']:
+                    cost_list.append(best_cost)
+                    if len(cost_list) > 100 : cost_list.pop(0)
+                    np.savetxt('live_variable/cost.csv', [cost_list], delimiter=',', fmt='%.3f')
+
+                    F_best_FL = np.asarray(best_control_parameters[0:controller.num_control_parameters_single_leg].reshape(3,-1))
+                    F_best_FR = np.asarray(best_control_parameters[controller.num_control_parameters_single_leg:controller.num_control_parameters_single_leg*2].reshape(3,-1))
+                    F_best_RL = np.asarray( best_control_parameters[controller.num_control_parameters_single_leg*2:controller.num_control_parameters_single_leg*3].reshape(3,-1))
+                    F_best_RR = np.asarray(best_control_parameters[controller.num_control_parameters_single_leg*3:controller.num_control_parameters_single_leg*4].reshape(3,-1))
+                    np.savetxt("live_variable/F_best_FL.csv", F_best_FL, delimiter=",")
+                    np.savetxt("live_variable/F_best_FR.csv", F_best_FR, delimiter=",")
+                    np.savetxt("live_variable/F_best_RL.csv", F_best_RL, delimiter=",")
+                    np.savetxt("live_variable/F_best_RR.csv", F_best_RR, delimiter=",")
 
             # If we use Gradient-Based MPC
             else:

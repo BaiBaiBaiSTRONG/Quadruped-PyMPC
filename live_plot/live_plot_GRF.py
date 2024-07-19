@@ -26,7 +26,7 @@ ax.set_ylabel('Force Z [N]')
 ax.legend(loc='best')
 ax.set_title('Ground Reaction Forces')
 
-ax.set_xlim(-0.1, 3.1)
+ax.set_xlim(-1.2, 2.2)
 ax.set_ylim(-70, 70)
 
 def init():
@@ -42,7 +42,7 @@ def update(frame):
                 data = np.loadtxt(file_path, delimiter=',')
                 # Select only the third line (row index 2)
                 data_to_plot = data[2, :]
-                x = np.arange(len(data_to_plot))
+                x = np.arange(len(data_to_plot))-1
                 y = data_to_plot
                 lines[label].set_data(x, y)
                 # lines[label].set_ydata(y)
@@ -50,12 +50,12 @@ def update(frame):
                 print(f"File {file_path} does not exist.")
         
         # Adjust x and y limits based on the data
-        # all_y_data = [lines[label].get_ydata() for label in file_paths.keys()]
-        # if all_y_data:
-        #     y_min = min(np.min(y) for y in all_y_data)
-        #     y_max = max(np.max(y) for y in all_y_data)
-        #     ax.set_xlim(0, len(data_to_plot) - 1)
-        #     ax.set_ylim(y_min, y_max)
+        all_y_data = [lines[label].get_ydata() for label in file_paths.keys()]
+        if all_y_data:
+            y_min = min(-70, min(np.min(y) - 10 for y in all_y_data))
+            y_max = max( 70, max(np.max(y) + 10 for y in all_y_data))
+            ax.set_xlim(-1.2, len(data_to_plot) - 1.8)
+            ax.set_ylim(y_min, y_max)
 
     except Exception as e:
         print(f"Error reading or processing the file: {e}")

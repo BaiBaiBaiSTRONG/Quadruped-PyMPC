@@ -1,6 +1,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,c++,c,visualstudiocode,git,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,c++,c,visualstudiocode,git,linux
 
+# Live variable used for plotting
+live_variable/
+
 ### Custom ###
 ./jnrh2023/
 c_generated_code
@@ -301,12 +304,7 @@ pyrightconfig.json
 .history
 .ionide
 
-# Live variable used for plotting
-live_variable/*
-
 
 
 gradient/nominal/c_generated_code_gait_adaptive/
-
-
 
