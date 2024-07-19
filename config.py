@@ -57,7 +57,7 @@ mpc_params = {
 
     # horizon is the number of timesteps in the future that the mpc will optimize
     # dt is the discretization time used in the mpc
-    'horizon':                                 15,
+    'horizon':                                 5,
     'dt':                                      0.02,
 
     # GRF limits for each single leg
@@ -135,7 +135,7 @@ mpc_params = {
 
     # this is used only in the case 'sampling'.
     'sampling_method':                         'random_sampling',  # 'random_sampling', 'mppi', 'cem_mppi'
-    'control_parametrization':                 'zero_order',
+    'control_parametrization':                 'cubic_spline',
     # 'cubic_spline', 'linear_spline_1', 'linear_spline_2', 'zero_order'
     'num_parallel_computations':               5000,  # More is better, but slower computation!
     'num_sampling_iterations':                 1,  # More is better, but slower computation!

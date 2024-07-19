@@ -1,3 +1,7 @@
+import matplotlib
+# matplotlib.use('GTK4Agg') 
+print(matplotlib.get_backend())
+
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
@@ -175,7 +179,7 @@ axFootZ.set_title('Foot Height')
 axFootZ.set_xlim(-0.1, 100.1)
 axFootZ.set_ylim(0.25, 0.50)
 
-
+count=0
 
 lines_list = [lines_grf, lines_foot_z, lines_cost,lines_height, lines_foot_x, lines_foot_y]
 def init():
@@ -329,6 +333,12 @@ def update(frame):
             axFootZ.set_ylim(y_min, y_max)
     except Exception as e: print(f"Error reading or processing the file: {e}")
 
+    # Redraw the figure to update the axes
+    global count
+    if count%40 == 0:
+        fig.canvas.draw_idle()
+        fig.canvas.flush_events()
+    count+=1
 
     return [line for lines in lines_list for line in lines.values()]
 
@@ -338,7 +348,7 @@ ani = animation.FuncAnimation(
     update,
     init_func=init,
     blit=True,
-    interval=100,
+    interval=25,
     cache_frame_data=False,
 )
 

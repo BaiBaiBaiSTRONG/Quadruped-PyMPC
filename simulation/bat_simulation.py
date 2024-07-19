@@ -394,8 +394,8 @@ class SamplingOptimizer():
             f_samples, d_samples, p_lw_samples, F_lw_samples = self.generate_samples(iter=i, f=f, d=d, p_lw=p_lw, F_lw=F_lw, height_map=height_map)
 
             # --- Step 2 : Given f and d samples -> generate the contact sequence for the samples
-            # c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
-            c_samples = contact_sequence.unsqueeze(0).expand(self.num_samples, self.num_legs, self.sampling_horizon)
+            c_samples, new_phase = self.gait_generator(f_samples=f_samples, d_samples=d_samples, phase=phase.squeeze(0), sampling_horizon=self.sampling_horizon, dt=self.dt)
+            # c_samples = contact_sequence.unsqueeze(0).expand(self.num_samples, self.num_legs, self.sampling_horizon)
 
             # F_lw_samples[:,:,2,:] = F_lw_samples[:,:,2,:] + (c_samples.unsqueeze(-1)) * ((self.robot_mass*9.81) / torch.sum(c_samples, dim=1).unsqueeze(1))
 
@@ -1160,6 +1160,8 @@ if __name__ == '__main__':
     mpc_dt = cfg.mpc_params['dt']
     horizon = cfg.mpc_params['horizon']
 
+    gait_name = cfg.simulation_params['gait']
+    gait_type, duty_factor, step_frequency = get_gait_params(gait_name)
 
     if cfg.mpc_params['type'] == 'sampling':
 
@@ -1172,7 +1174,8 @@ if __name__ == '__main__':
 
         controller = SamplingOptimizer(device=device,num_legs=num_legs, optimizerCfg=optimizerCfg)
 
-        f_fake = 2.5*torch.ones((1,num_legs),device=device)
+
+        f_fake = step_frequency*torch.ones((1,num_legs),device=device)
         if cfg.simulation_params['gait'] == 'trot':
             d_fake = 0.65*torch.ones((1,num_legs),device=device)
         elif cfg.simulation_params['gait'] == 'full_stance':
@@ -1181,13 +1184,12 @@ if __name__ == '__main__':
         F_fake = torch.empty((1,num_legs, 3, 4),device=device)
         height_map = torch.empty((1,num_legs),device=device)
         phase = torch.zeros((1,num_legs), device=device)
-        phase[:,(0,3)] = 0.5 # Init phase [0.5, 0, 0, 0.5]
+        phase[:,(0,3)] = 0.4875 # Init phase [0.5, 0, 0, 0.5]
+        phase[:,(1,2)] = 0.9875 # Init phase [0.5, 0, 0, 0.5]
         c_prev = torch.ones((1,4), device=device)
 
 
     # Periodic gait generator _________________________________________________________________________
-    gait_name = cfg.simulation_params['gait']
-    gait_type, duty_factor, step_frequency = get_gait_params(gait_name)
     # Given the possibility to use nonuniform discretization, 
     # we generate a contact sequence two times longer and with a dt half of the one of the mpc
     # pgg = PeriodicGaitGenerator(duty_factor=duty_factor, step_freq=step_frequency, gait_type=gait_type,
@@ -1393,10 +1395,13 @@ if __name__ == '__main__':
                 f_star, d_star, p0_star_lw, F0_star_lw = controller.optimize_latent_variable(state_current=state_current,ref_state=ref_state, f=f_fake, d=d_fake, p_lw=p_fake, F_lw=F_fake, phase=phase, c_prev=c_prev, height_map=height_map, contact_sequence=contact_sequence_torch)
                 
                 # update phase and contact sequence
-                f_samples = torch.tensor(([[1.4, 1.4, 1.4, 1.4]]), device=controller.device)
+                f_samples = torch.tensor(([[step_frequency, step_frequency, step_frequency, step_frequency]]), device=controller.device)
                 d_samples = torch.tensor(([[1.0, 1.0, 1.0, 1.0]]), device=controller.device)
-                _, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, simulation_dt)
+                _, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, 1/mpc_frequency)
                 phase = new_phase_samples
+
+                print('  Bat  phase :',phase)
+                print("Giulio Phase :",pgg.phase_signal )
 
                 c_prev = torch.from_numpy(current_contact).to(dtype=torch.bool,device=controller.device).unsqueeze(0)
 

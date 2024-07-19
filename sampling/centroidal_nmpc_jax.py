@@ -99,7 +99,7 @@ class Sampling_MPC:
         elif(self.control_parametrization == "cubic_spline"):
             # Along the horizon, we have 1 splines per control input (3 forces)
             # Each spline has 3 parameters
-            self.num_control_parameters_single_leg = 24  #should be 9
+            self.num_control_parameters_single_leg = 12#24  #should be 9
 
             # In totale we have 4 legs
             self.num_control_parameters = self.num_control_parameters_single_leg*4
