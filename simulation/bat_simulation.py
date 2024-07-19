@@ -1254,18 +1254,22 @@ if __name__ == '__main__':
     RENDER_FREQ = 30  # Hz
     last_render_time = time.time()
 
-    height_list = [0.0]
-    height_ref_list = [0.0]
-    cost_list = [0.0]
-    FL_foot_list = [np.array([0.0, 0.0, 0.0])]
-    FR_foot_list = [np.array([0.0, 0.0, 0.0])]
-    RL_foot_list = [np.array([0.0, 0.0, 0.0])]
-    RR_foot_list = [np.array([0.0, 0.0, 0.0])]
-    FL_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
-    FR_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
-    RL_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
-    RR_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
     des_foot_pos = LegsAttr(*[np.zeros(3) for _ in range(4)])
+
+
+    if cfg.simulation_params['live_plot']:
+        height_list = [0.0]
+        height_ref_list = [0.0]
+        cost_list = [0.0]
+        FL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        FR_foot_list = [np.array([0.0, 0.0, 0.0])]
+        RL_foot_list = [np.array([0.0, 0.0, 0.0])]
+        RR_foot_list = [np.array([0.0, 0.0, 0.0])]
+        FL_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
+        FR_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
+        RL_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
+        RR_foot_ref_list = [np.array([0.0, 0.0, 0.0])]
+
 
     while True:
         step_start = time.time()
@@ -1285,22 +1289,6 @@ if __name__ == '__main__':
             foot_RL=feet_pos.RL,
             foot_RR=feet_pos.RR
             )
-        height_list.append(state_current['position'][2])
-        if len(height_list) > 100 : height_list.pop(0)
-        np.savetxt('live_variable/height.csv', [height_list], delimiter=',', fmt='%.3f')
-
-        FL_foot_list.append(state_current['foot_FL'])
-        if len(FL_foot_list) > 100 : FL_foot_list.pop(0)
-        np.savetxt('live_variable/FL_foot.csv', FL_foot_list, delimiter=',', fmt='%.3f')
-        FR_foot_list.append(state_current['foot_FR'])
-        if len(FR_foot_list) > 100 : FR_foot_list.pop(0)
-        np.savetxt('live_variable/FR_foot.csv', FR_foot_list, delimiter=',', fmt='%.3f')
-        RL_foot_list.append(state_current['foot_RL'])
-        if len(RL_foot_list) > 100 : RL_foot_list.pop(0)
-        np.savetxt('live_variable/RL_foot.csv', RL_foot_list, delimiter=',', fmt='%.3f')
-        RR_foot_list.append(state_current['foot_RR'])
-        if len(RR_foot_list) > 100 : RR_foot_list.pop(0)
-        np.savetxt('live_variable/RR_foot.csv', RR_foot_list, delimiter=',', fmt='%.3f')
 
         # Update target base velocity
         ref_base_lin_vel, ref_base_ang_vel = env.target_base_vel()
@@ -1344,11 +1332,6 @@ if __name__ == '__main__':
         ref_pos = np.array([0, 0, cfg.hip_height])
         ref_pos[2] = cfg.simulation_params['ref_z'] + terrain_height
 
-        # print('Ref Height : ', ref_pos[2])
-        height_ref_list.append(ref_pos[2])
-        if len(height_ref_list) > 100 : height_ref_list.pop(0)
-        np.savetxt('live_variable/height_ref.csv', [height_ref_list], delimiter=',', fmt='%.3f')
-
 
         # Update state reference ------------------------------------------------------------------------
         ref_state |= dict(ref_foot_FL=ref_feet_pos.FL.reshape((1, 3)),
@@ -1362,6 +1345,27 @@ if __name__ == '__main__':
                           ref_position=ref_pos
                           )
         # -------------------------------------------------------------------------------------------------
+
+        # Save variable for live plotting if needed
+        if cfg.simulation_params['live_plot']:
+            height_list.append(state_current['position'][2])
+            if len(height_list) > 100 : height_list.pop(0)
+            np.savetxt('live_variable/height.csv', [height_list], delimiter=',', fmt='%.3f')
+            FL_foot_list.append(state_current['foot_FL'])
+            if len(FL_foot_list) > 100 : FL_foot_list.pop(0)
+            np.savetxt('live_variable/FL_foot.csv', FL_foot_list, delimiter=',', fmt='%.3f')
+            FR_foot_list.append(state_current['foot_FR'])
+            if len(FR_foot_list) > 100 : FR_foot_list.pop(0)
+            np.savetxt('live_variable/FR_foot.csv', FR_foot_list, delimiter=',', fmt='%.3f')
+            RL_foot_list.append(state_current['foot_RL'])
+            if len(RL_foot_list) > 100 : RL_foot_list.pop(0)
+            np.savetxt('live_variable/RL_foot.csv', RL_foot_list, delimiter=',', fmt='%.3f')
+            RR_foot_list.append(state_current['foot_RR'])
+            if len(RR_foot_list) > 100 : RR_foot_list.pop(0)
+            np.savetxt('live_variable/RR_foot.csv', RR_foot_list, delimiter=',', fmt='%.3f')
+            height_ref_list.append(ref_pos[2])
+            if len(height_ref_list) > 100 : height_ref_list.pop(0)
+            np.savetxt('live_variable/height_ref.csv', [height_ref_list], delimiter=',', fmt='%.3f')
 
 
         # TODO: this should be hidden inside the controller forward/get_action method
@@ -1505,36 +1509,34 @@ if __name__ == '__main__':
             z_foot_mean = 0.0
         # print("loop time: ", time.time() - step_start)
 
-        # Save reference value for the leg - plotting 
-        if current_contact[0] == 1: # Stance
-            FL_foot_ref_list.append(ref_state['ref_foot_FL'][0,:])
-        else : # Swing
-            FL_foot_ref_list.append(des_foot_pos['FL'])
+        # Save variable for plotting if needed
+        if cfg.simulation_params['live_plot']:
+            # Save reference value for the leg - plotting 
+            if current_contact[0] == 1: # Stance
+                FL_foot_ref_list.append(ref_state['ref_foot_FL'][0,:])
+            else : # Swing
+                FL_foot_ref_list.append(des_foot_pos['FL'])
+            if current_contact[1] == 1: # Stance
+                FR_foot_ref_list.append(ref_state['ref_foot_FR'][0,:])
+            else : # Swing
+                FR_foot_ref_list.append(des_foot_pos['FR'])
+            if current_contact[2] == 1: # Stance
+                RL_foot_ref_list.append(ref_state['ref_foot_RL'][0,:])
+            else : # Swing
+                RL_foot_ref_list.append(des_foot_pos['RL'])
+            if current_contact[3] == 1: # Stance
+                RR_foot_ref_list.append(ref_state['ref_foot_RR'][0,:])
+            else : # Swing
+                RR_foot_ref_list.append(des_foot_pos['RR'])
 
-        if current_contact[1] == 1: # Stance
-            FR_foot_ref_list.append(ref_state['ref_foot_FR'][0,:])
-        else : # Swing
-            FR_foot_ref_list.append(des_foot_pos['FR'])
-
-        if current_contact[2] == 1: # Stance
-            RL_foot_ref_list.append(ref_state['ref_foot_RL'][0,:])
-        else : # Swing
-            RL_foot_ref_list.append(des_foot_pos['RL'])
-
-        if current_contact[3] == 1: # Stance
-            RR_foot_ref_list.append(ref_state['ref_foot_RR'][0,:])
-        else : # Swing
-            RR_foot_ref_list.append(des_foot_pos['RR'])
-
-
-        if len(FL_foot_ref_list) > 100 : FL_foot_ref_list.pop(0)
-        np.savetxt('live_variable/FL_foot_ref.csv', FL_foot_ref_list, delimiter=',', fmt='%.3f')
-        if len(FR_foot_ref_list) > 100 : FR_foot_ref_list.pop(0)
-        np.savetxt('live_variable/FR_foot_ref.csv', FR_foot_ref_list, delimiter=',', fmt='%.3f')
-        if len(RL_foot_ref_list) > 100 : RL_foot_ref_list.pop(0)
-        np.savetxt('live_variable/RL_foot_ref.csv', RL_foot_ref_list, delimiter=',', fmt='%.3f')
-        if len(RR_foot_ref_list) > 100 : RR_foot_ref_list.pop(0)
-        np.savetxt('live_variable/RR_foot_ref.csv', RR_foot_ref_list, delimiter=',', fmt='%.3f')
+            if len(FL_foot_ref_list) > 100 : FL_foot_ref_list.pop(0)
+            np.savetxt('live_variable/FL_foot_ref.csv', FL_foot_ref_list, delimiter=',', fmt='%.3f')
+            if len(FR_foot_ref_list) > 100 : FR_foot_ref_list.pop(0)
+            np.savetxt('live_variable/FR_foot_ref.csv', FR_foot_ref_list, delimiter=',', fmt='%.3f')
+            if len(RL_foot_ref_list) > 100 : RL_foot_ref_list.pop(0)
+            np.savetxt('live_variable/RL_foot_ref.csv', RL_foot_ref_list, delimiter=',', fmt='%.3f')
+            if len(RR_foot_ref_list) > 100 : RR_foot_ref_list.pop(0)
+            np.savetxt('live_variable/RR_foot_ref.csv', RR_foot_ref_list, delimiter=',', fmt='%.3f')
 
         pass
 
