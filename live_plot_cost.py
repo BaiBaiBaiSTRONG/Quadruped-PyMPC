@@ -10,7 +10,7 @@ import os
 
 # File paths
 file_paths = {
-    'cost': 'cost.csv',
+    'cost': 'live_variable/cost.csv',
 }
 
 # Initialize the plot
@@ -26,6 +26,7 @@ for label in file_paths.keys():
 ax.set_xlabel('Iteration')
 ax.set_ylabel('Best trajectory cost')
 ax.legend(loc='best')
+ax.set_title('Best Trajectory Cost')
 
 ax.set_xlim(-0.1, 100.1)
 ax.set_ylim(0.25, 0.50)

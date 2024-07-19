@@ -5,10 +5,10 @@ import os
 
 # File paths
 file_paths = {
-    'FL': 'F_best_FL.csv',
-    'FR': 'F_best_FR.csv',
-    'RL': 'F_best_RL.csv',
-    'RR': 'F_best_RR.csv'
+    'FL': 'live_variable/F_best_FL.csv',
+    'FR': 'live_variable/F_best_FR.csv',
+    'RL': 'live_variable/F_best_RL.csv',
+    'RR': 'live_variable/F_best_RR.csv'
 }
 
 # Initialize the plot
@@ -24,6 +24,7 @@ for label in file_paths.keys():
 ax.set_xlabel('Iteration')
 ax.set_ylabel('Force Z [N]')
 ax.legend(loc='best')
+ax.set_title('Ground Reaction Forces')
 
 ax.set_xlim(-0.1, 3.1)
 ax.set_ylim(-70, 70)

@@ -749,6 +749,9 @@ class QuadrupedEnv(gym.Env):
         elif keycode == 345:  # ctrl
             self._ref_base_lin_vel_H *= 0.0
             self._ref_base_ang_yaw_dot = 0.0
+        elif keycode == 32: # space
+            while True :
+                pass
 
     def _get_obs(self):
         """Returns the state observation based on the specified state observation names."""

@@ -718,10 +718,10 @@ class Sampling_MPC:
 
         # print('flushing')
         # self.F_best_FL = np.random.randn(3, 10)
-        np.savetxt("F_best_FL.csv", self.F_best_FL, delimiter=",")
-        np.savetxt("F_best_FR.csv", self.F_best_FR, delimiter=",")
-        np.savetxt("F_best_RL.csv", self.F_best_RL, delimiter=",")
-        np.savetxt("F_best_RR.csv", self.F_best_RR, delimiter=",")
+        np.savetxt("live_variable/F_best_FL.csv", self.F_best_FL, delimiter=",")
+        np.savetxt("live_variable/F_best_FR.csv", self.F_best_FR, delimiter=",")
+        np.savetxt("live_variable/F_best_RL.csv", self.F_best_RL, delimiter=",")
+        np.savetxt("live_variable/F_best_RR.csv", self.F_best_RR, delimiter=",")
         # jax.debug.breakpoint()
 
         # Compute the GRF associated to the best parameter
