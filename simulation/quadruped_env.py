@@ -750,7 +750,7 @@ class QuadrupedEnv(gym.Env):
             self._ref_base_lin_vel_H *= 0.0
             self._ref_base_ang_yaw_dot = 0.0
         elif keycode == 32: # space
-            while True :
+            while input('--- Simulation Paused - press enter in terminal to resume ---') == ' ' :
                 pass
 
     def _get_obs(self):

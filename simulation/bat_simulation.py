@@ -810,11 +810,11 @@ class SamplingOptimizer():
 
 
             # --- Step 2 : Step the model
-            new_state = self.centroidal_model_step(state=state, input=input, contact=contact)
-            state = new_state
+            # new_state = self.centroidal_model_step(state=state, input=input, contact=contact)
+            # state = new_state
 
             # Jitted Function
-            # state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'] = jitted_centroidal_model_step(state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'], input['p_lw'], input['F_lw'], contact, self.robot_mass, self.gravity_lw, self.robot_inertia, self.inv_robot_inertia, self.dt)
+            state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'] = jitted_centroidal_model_step(state['pos_com_lw'], state['lin_com_vel_lw'], state['euler_xyz_angle'], state['ang_vel_com_b'], state['p_lw'], input['p_lw'], input['F_lw'], contact, self.robot_mass, self.gravity_lw, self.robot_inertia, self.inv_robot_inertia, self.dt)
 
             # --- Step 3 : compute the step cost
             state_vector     = torch.cat([vector.view(self.num_samples, -1) for vector in state.values()], dim=1)               # Shape: (num_samples, state_dim)
@@ -1390,26 +1390,27 @@ if __name__ == '__main__':
                 time_start = time.time()
 
                 # c_prev = torch.from_numpy(current_contact).to(dtype=torch.bool,device=controller.device).unsqueeze(0)
+
+                # Feedforward the contact sequence to the controller - Not used anymore
                 contact_sequence_torch = torch.from_numpy(contact_sequence).to(dtype=torch.bool, device=controller.device)
 
+                # Compute optimal parameters
                 f_star, d_star, p0_star_lw, F0_star_lw = controller.optimize_latent_variable(state_current=state_current,ref_state=ref_state, f=f_fake, d=d_fake, p_lw=p_fake, F_lw=F_fake, phase=phase, c_prev=c_prev, height_map=height_map, contact_sequence=contact_sequence_torch)
                 
                 # update phase and contact sequence
-                f_samples = torch.tensor(([[step_frequency, step_frequency, step_frequency, step_frequency]]), device=controller.device)
-                d_samples = torch.tensor(([[1.0, 1.0, 1.0, 1.0]]), device=controller.device)
-                _, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, 1/mpc_frequency)
-                phase = new_phase_samples
-
-                print('  Bat  phase :',phase)
-                print("Giulio Phase :",pgg.phase_signal )
+                # 1. With gait generator - Works but small errors accumulate over time...
+                # f_samples = torch.tensor(([[step_frequency, step_frequency, step_frequency, step_frequency]]), device=controller.device)
+                # d_samples = torch.tensor(([[1.0, 1.0, 1.0, 1.0]]), device=controller.device)
+                # _, new_phase_samples = controller.gait_generator( f_samples, d_samples, phase.squeeze(0), 1, 1/mpc_frequency)
+                # phase = new_phase_samples  # shape(1, 4)
+                # 2. With Giulio's contact sequence - Reset the phase error at each time step - Works perfectly 
+                phase = torch.tensor(pgg.phase_signal,device=controller.device).unsqueeze(0) # shape(1, 4)
 
                 c_prev = torch.from_numpy(current_contact).to(dtype=torch.bool,device=controller.device).unsqueeze(0)
-
-                nmpc_footholds = ref_feet_pos
-
-                nmpc_GRFs = np.array(F0_star_lw.flatten(0,-1).cpu().numpy())
-
                 previous_contact_mpc = current_contact
+                
+                nmpc_footholds = ref_feet_pos
+                nmpc_GRFs = np.array(F0_star_lw.flatten(0,-1).cpu().numpy())
 
                 print('sampling time : ', time.time() - time_start)
 
