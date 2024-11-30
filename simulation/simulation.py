@@ -200,6 +200,7 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
             action_noise = np.random.normal(0, 2, size=env.mjModel.nu)
             action += action_noise
 
+            # Official step in to the environment
             state, reward, is_terminated, is_truncated, info = env.step(action=action)
 
 

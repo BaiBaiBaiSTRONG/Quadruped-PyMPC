@@ -230,6 +230,19 @@ class QuadrupedPyMPC_Wrapper:
         return tau
         
     
+    def get_safety_check_info(self,) -> dict:
+        """ Get some safety check information from within the control loop.
+
+        Returns:
+            Dict: dictionary of safety check information
+        """
+        #  First part is the quadrupedpympc_observables
+        safety_checker_info = []
+        safety_checker_info.append(self.quadrupedpympc_observables)
+
+        return safety_checker_info
+
+
 
     def get_obs(self,) -> dict:
         """ Get some user-defined observables from withing the control loop.

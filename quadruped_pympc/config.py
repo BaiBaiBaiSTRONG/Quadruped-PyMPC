@@ -6,7 +6,7 @@ from quadruped_pympc.helpers.quadruped_utils import GaitType
 
 # These are used both for a real experiment and a simulation -----------
 # These are the only attributes needed per quadruped, the rest can be computed automatically ----------------------
-robot = 'aliengo'  # 'go1', 'go2', 'aliengo', 'hyqreal', 'mini_cheetah'  # TODO: Load from robot_descriptions.py
+robot = 'go2'  # 'go1', 'go2', 'aliengo', 'hyqreal', 'mini_cheetah'  # TODO: Load from robot_descriptions.py
 robot_leg_joints = dict(FL=['FL_hip_joint', 'FL_thigh_joint', 'FL_calf_joint',],  # TODO: Make configs per robot.
                         FR=['FR_hip_joint', 'FR_thigh_joint', 'FR_calf_joint',],
                         RL=['RL_hip_joint', 'RL_thigh_joint', 'RL_calf_joint',],
@@ -212,7 +212,7 @@ simulation_params = {
 
     'use_inertia_recomputation':   True,
 
-    'scene':                       'flat',  # flat, rough, stairs, random_boxes, random_pyramids, suspend_stairs, slope, perlin, image
+    'scene':                       'rough',  # flat, rough, stairs, random_boxes, random_pyramids, suspend_stairs, slope, perlin, image
 
     }
 # -----------------------------------------------------------------------
