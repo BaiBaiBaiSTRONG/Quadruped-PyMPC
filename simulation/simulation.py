@@ -6,6 +6,7 @@
 import time
 import numpy as np
 from tqdm import tqdm
+import argparse
 
 # Gym and Simulation related imports
 from gym_quadruped.quadruped_env import QuadrupedEnv
@@ -27,9 +28,14 @@ if(cfg.simulation_params['visual_foothold_adaptation'] != 'blind'):
     from gym_quadruped.sensors.heightmap import HeightMap
 
 
+# SafetyChecker imports
+from safety_checker.safety_checker import SafetyChecker
 
 
-def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0, render=True):
+
+
+
+def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0, render=True, use_safety_filter=False):
     
     np.set_printoptions(precision=3, suppress=True)
     np.random.seed(seed_number) 
@@ -123,6 +129,9 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
     N_STEPS_PER_EPISODE = 2000 if env.base_vel_command_type != "human" else 20000
     last_render_time = time.time()
 
+    safety_checker = SafetyChecker(state_observables_names, quadrupedpympc_observables_names)
+
+
     state_obs_history, ctrl_state_history = [], []
     for episode_num in tqdm(range(N_EPISODES), desc="Episodes"):
 
@@ -186,10 +195,10 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
                 tau[leg] = np.clip(tau[leg], tau_min, tau_max)
 
             quadrupedpympc_observables = quadrupedpympc_wrapper.get_obs()
+            # state_observables = env.get_obs() # We use the updated state_observables directly returned by the env.step() down below
 
             
 
-            
             # Set control and mujoco step ----------------------------------------------------------------------
             action = np.zeros(env.mjModel.nu)
             action[env.legs_tau_idx.FL] = tau.FL
@@ -201,7 +210,34 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
             action += action_noise
 
             # Official step in to the environment
-            state, reward, is_terminated, is_truncated, info = env.step(action=action)
+            state, reward, is_terminated_basic, is_truncated, info = env.step(action=action)
+
+            # is_terminated_basic is the termination signal provided by original method. It combines invalid_contact or out_of_terrain_bounds.
+            # The info here includes the time, step_num, and invalid_contact_info.
+
+
+
+            # Safety Checker
+            if use_safety_filter:
+                # 将状态和MPC观测值从tuple合并为dict
+                state_dict = env._get_obs_dict()
+                obs_state_dict = {**state_dict, **quadrupedpympc_observables}
+
+                # 1. 安全检查部分
+                safe_output = safety_checker(state_dict=obs_state_dict)
+
+                # 2. 安全响应处理部分
+                if not safe_output.is_safe:
+                    print(f"Safety Level: {safe_output.safety_level}")
+                    print(f"Violated constraints: {safe_output.violated_constraints}")
+                    
+                    if safe_output.stop_requested:
+                        print("Safety violation detected, stopping the robot")
+                        env._key_callback(345)  # 345 是 Ctrl 键的 keycode
+                        is_terminated_safety_checker = False
+                else:
+                    is_terminated_safety_checker = False 
+            
 
 
             # Store the history of observations and control -------------------------------------------------------
@@ -260,8 +296,10 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
 
 
             # Reset the environment if the episode is terminated ------------------------------------------------
-            if env.step_num >= N_STEPS_PER_EPISODE or is_terminated or is_truncated:
-                if is_terminated:
+            if env.step_num >= N_STEPS_PER_EPISODE or is_terminated_basic or is_truncated:
+            # if env.step_num >= N_STEPS_PER_EPISODE :
+
+                if is_terminated_basic:
                     print("Environment terminated")
                 else:
                     state_obs_history.append(ep_state_obs_history)
@@ -273,7 +311,7 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
 
                 if(return_dict is not None):
                     return_dict['process'+str(process)+'_ctrl_state_history_ep'+str(episode_num)] = np.array(ctrl_state_history).reshape(-1, len(ctrl_state))
-                    return_dict['process'+str(process)+'_success_rate_ep'+str(episode_num)] = int(not is_terminated or not is_truncated)
+                    return_dict['process'+str(process)+'_success_rate_ep'+str(episode_num)] = int(not is_terminated_basic or not is_truncated)
 
 
     env.close()
@@ -283,5 +321,16 @@ def run_simulation(process=0, num_episodes=500, return_dict=None, seed_number=0,
 
 
 if __name__ == '__main__':
-    run_simulation()
-    #run_simulation(num_episodes=1, render=False)
+    # 添加命令行参数解析
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--safetyfilter', action='store_true', 
+                      help='Enable safety filter')
+    args = parser.parse_args()
+    
+    # 根据命令行参数决定使用哪个版本的代码
+    if args.safetyfilter:
+        # 使用带安全检查的版本
+        run_simulation(use_safety_filter=True)
+    else:
+        # 使用原始版本
+        run_simulation(num_episodes=1, render=True)

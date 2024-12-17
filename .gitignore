@@ -317,3 +317,4 @@ MUJOCO_LOG.TXT
 cfg/
 
 *.pkl
+quadruped_pympc/gym-quadruped

@@ -1,0 +1,305 @@
+# safety_config.yaml
+base_constraints:
+  position:
+    enabled: true
+    priority: CRITICAL
+    weights: [1.0, 1.0, 1.0] # x, y, z weights
+    thresholds:
+      pos_max_xy: 0.5
+      pos_max_z: 0.5
+      warning: 0.8
+      danger: 0.5
+      emergency: 0.2
+
+  velocity:
+    enabled: true
+    priority: HIGH
+    weights: [1.0, 1.0, 1.0] # linear velocities
+    thresholds:
+      vel_max_xy: 2.0
+      vel_max_z: 0.9
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+
+  orientation:
+    enabled: true
+    priority: HIGH
+    weights: [2.0, 2.0, 0.2] # roll, pitch, yaw
+    thresholds:
+      angle_max: 0.35
+      warning: 0.8
+      danger: 0.5
+      emergency: 0.2
+
+leg_constraints:
+  joint_velocity:
+    enabled: true
+    priority: HIGH
+    weights: [1.0, 1.0, 1.0] # hip, thigh, calf
+    thresholds:
+      vel_max: 23.3
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+
+  workspace:
+    enabled: true
+    priority: CRITICAL
+    weights: [1.0, 1.0, 1.0] # x, y, z in base frame
+    thresholds:
+      workspace_max: 60.0
+      warning: 0.8
+      danger: 0.5
+      emergency: 0.2
+  phase:
+    enabled: true
+    priority: HIGH
+    weights: [0.3, 0.3] # swing, stance weights
+    thresholds:
+      swing_height_max: 0.7 # 最大摆动高度 (m)
+      stance_vel_max: 2.3 # 支撑相最大速度 (m/s)
+      step_length_max: 0.3 # 最大步长 (m)
+      warning: 1.24
+      danger: 0.4
+      emergency: 0.2
+
+grf_constraints:
+  contact_force:
+    enabled: false
+    priority: HIGH
+    weights: [0.1, 0.1, 0.1] # x, y, z forces
+    thresholds:
+      force_max: 5000.0
+      warning: 0.7
+      danger: 0.6
+      emergency: 0.2
+  friction_cone:
+    enabled: false
+    priority: CRITICAL
+    weights: [0.3]
+    friction_coefficient: 0.6 # 摩擦系数
+    thresholds:
+      warning: 0.8
+      danger: 0.5
+      emergency: 0.2
+  force_balance:
+    enabled: true
+    priority: HIGH
+    weights: [0.2, 0.4] # force, moment weights
+    thresholds:
+      force_imbalance_max: 300.0 # 最大力不平衡 (N)
+      moment_imbalance_max: 200.0 # 最大力矩不平衡 (Nm)
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+
+tracking_constraints:
+  position_tracking:
+    enabled: false
+    priority: MEDIUM
+    weights: [1.0, 1.0, 1.0] # x, y, z weights
+    thresholds:
+      max_error_xy: 0.1 # 最大平面误差 (m)
+      max_error_z: 0.1 # 最大高度误差 (m)
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+  orientation_tracking:
+    enabled: false
+    priority: MEDIUM
+    weights: [0.1, 0.1, 0.1] # roll, pitch, yaw weights
+    thresholds:
+      max_error: 0.5 # 最大角度误差 (rad)
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+  foot_tracking:
+    enabled: false
+    priority: MEDIUM
+    weights: [0.1, 0.1, 1.0] # x, y, z weights
+    thresholds:
+      swing_error_max: 0.1 # 摆动相最大误差 (m)
+      stance_error_max: 0.1 # 支撑相最大误差 (m)
+      height_threshold: 0.1 # 高度阈值 (m)
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+
+prediction_constraints:
+  mpc_prediction:
+    enabled: true
+    priority: MEDIUM
+    weights: [1.0, 1.0, 1.0]
+    thresholds:
+      prediction_horizon: 10
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+  predicted_foothold:
+    enabled: false
+    priority: MEDIUM
+    weights: [1.0, 1.0] # workspace, step_length weights
+    thresholds:
+      workspace_max: 100.0 # 工作空间半径 (m)
+      step_length_max: 0.3 # 最大步长 (m)
+      velocity_max: 2.0 # 最大速度 (m/s)
+      warning: 0.7
+      danger: 0.6
+      emergency: 0.2
+  predicted_grf:
+    enabled: false
+    priority: HIGH
+    weights: [1.0, 1.0, 1.0] # force, friction, rate weights
+    thresholds:
+      force_max: 500.0 # 最大力 (N)
+      friction_coefficient: 0.6 # 摩擦系数
+      force_rate_max: 1000.0 # 最大力变化率 (N/s)
+      warning: 0.7
+      danger: 0.4
+      emergency: 0.2
+  predicted_stability:
+    enabled: true
+    priority: CRITICAL
+    weights: [1.0, 1.0, 1.0] # support, zmp, angular weights
+    thresholds:
+      com_margin_min: 0.30 # 最小CoM裕度 (m)
+      zmp_margin_min: 0.31 # 最小ZMP裕度 (m)
+      angular_rate_max: 1.7 # 最大角动量变化率 (kg⋅m²/s²)
+      prediction_horizon: 10 # 预测步长
+      warning: 0.8
+      danger: 0.5
+      emergency: 0.2
+
+activation_optimization:
+  enabled: false
+  method: "gradient_based"
+  parameters:
+    max_active_constraints: 20
+    cost_weight: 0.1
+    min_activation_time: 0.1 # 最小激活时间 (s)
+    optimization_frequency: 10 # Hz
+
+weight_scheduler:
+  enabled: true
+  adaptation_rate: 0.1 # 学习率
+  phase_coefficient: 0.5 # 相位调制系数
+  violation_coefficient: 1.0 # 违反度调制系数
+  bounds:
+    min_weight: 0.1
+    max_weight: 2.0
+  update_frequency: 100 # Hz
+
+priority_manager:
+  enabled: true
+  history_window: 100 # 历史窗口大小
+  violation_weight: 0.3 # λ1
+  activation_weight: 0.2 # λ2
+  update_frequency: 50 # Hz
+
+scheduler_config:
+  phase_based_weights: True
+  dynamic_activation: False
+  update_frequency: 100 # Hz
+  optimization_method: "gradient_based"
+  weight_bounds: (0.1, 2.0)
+  adaptation_rate: 0.1
+# scheduler_config:
+#   # 基本配置
+#   enabled: true
+#   phase_based_weights: true
+#   dynamic_activation: true
+#   update_frequency: 100 # Hz
+
+#   # 权重调度器配置
+#   weight_scheduler:
+#     enabled: true
+#     adaptation_rate: 0.1 # 学习率
+#     phase_coefficient: 0.5 # 相位调制系数
+#     violation_coefficient: 1.0 # 违反度调制系数
+#     bounds:
+#       min_weight: 0.1
+#       max_weight: 2.0
+#     update_frequency: 100 # Hz
+
+#     # 权重衰减参数
+#     weight_decay:
+#       enabled: true
+#       decay_rate: 0.01
+#       min_allowed: 0.1
+
+#     # 相位相关调整
+#     phase_adjustment:
+#       stance_multiplier: 1.5
+#       swing_multiplier: 0.8
+#       transition_smoothing: 0.2
+
+#   # 优先级管理器配置
+#   priority_manager:
+#     enabled: true
+#     history_window: 100 # 历史窗口大小
+#     violation_weight: 0.3 # 违反度权重
+#     activation_weight: 0.2 # 激活频率权重
+#     update_frequency: 50 # Hz
+
+#     # 优先级等级阈值
+#     priority_thresholds:
+#       critical: 0.8
+#       high: 0.6
+#       medium: 0.4
+#       low: 0.2
+
+#   # 激活优化器配置
+#   activation_optimizer:
+#     enabled: true
+#     method: "gradient_based" # 可选: "gradient_based", "rule_based"
+#     optimization_frequency: 10 # Hz
+
+#     parameters:
+#       max_active_constraints: 20
+#       cost_weight: 0.1
+#       min_activation_time: 0.1 # 最小激活时间 (s)
+#       activation_threshold: 0.3 # 激活分数阈值
+
+#     # 性能评估参数
+#     performance_metrics:
+#       violation_weight: 0.4 # 违反度权重
+#       frequency_weight: 0.3 # 频率权重
+#       importance_weight: 0.3 # 重要性权重
+#       window_size: 100 # 评估窗口大小
+
+#     # 时间平滑参数
+#     temporal_smoothing:
+#       enabled: true
+#       smoothing_factor: 0.2
+#       min_switch_time: 0.2 # 最小切换时间 (s)
+
+#   # 约束分组配置
+#   constraint_groups:
+#     base:
+#       weight_multiplier: 1.0
+#       min_active_ratio: 0.8 # 最小激活比例
+
+#     leg:
+#       weight_multiplier: 1.2
+#       min_active_ratio: 0.6
+
+#     grf:
+#       weight_multiplier: 1.5
+#       min_active_ratio: 0.7
+
+#     tracking:
+#       weight_multiplier: 0.8
+#       min_active_ratio: 0.5
+
+#     prediction:
+#       weight_multiplier: 0.9
+#       min_active_ratio: 0.4
+
+#   # 调试配置
+#   debug:
+#     enabled: false
+#     log_level: "INFO" # 可选: "DEBUG", "INFO", "WARNING", "ERROR"
+#     save_history: true
+#     history_length: 1000
+#     print_frequency: 10 # Hz
