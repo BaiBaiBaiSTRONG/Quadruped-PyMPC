@@ -117,10 +117,6 @@ class QuadrupedPyMPC_Wrapper:
         state_current, \
         ref_state, \
         contact_sequence, \
-        ref_feet_pos, \
-        ref_feet_constraints, \
-        contact_sequence_dts, \
-        contact_sequence_lenghts, \
         step_height, \
         optimize_swing = self.wb_interface.update_state_and_reference(base_pos,
                                                 base_lin_vel,
@@ -166,34 +162,34 @@ class QuadrupedPyMPC_Wrapper:
                                                                         self.wb_interface.pgg.step_freq,
                                                                         self.wb_interface.pgg.duty_factor,
                                                                         self.wb_interface.pgg.gait_type,
-                                                                        contact_sequence_dts,
-                                                                        contact_sequence_lenghts,
                                                                         optimize_swing)
 
 
         
         
         # Compute Swing and Stance Torque ---------------------------------------------------------------------------
-        tau, _, _ = self.wb_interface.compute_stance_and_swing_torque(simulation_dt,
-                                                    qpos,
-                                                    qvel,
-                                                    feet_jac,
-                                                    jac_feet_dot,
-                                                    feet_pos,
-                                                    feet_vel,
-                                                    legs_qfrc_bias,
-                                                    legs_mass_matrix,
-                                                    self.nmpc_GRFs,
-                                                    self.nmpc_footholds,
-                                                    legs_qpos_idx,
-                                                    legs_qvel_idx,
-                                                    tau,
-                                                    optimize_swing,
-                                                    self.best_sample_freq,
-                                                    self.nmpc_joints_pos,
-                                                    self.nmpc_joints_vel,
-                                                    self.nmpc_joints_acc,
-                                                    self.nmpc_predicted_state)
+        tau, \
+        _, \
+        _ = self.wb_interface.compute_stance_and_swing_torque(simulation_dt,
+                                                            qpos,
+                                                            qvel,
+                                                            feet_jac,
+                                                            jac_feet_dot,
+                                                            feet_pos,
+                                                            feet_vel,
+                                                            legs_qfrc_bias,
+                                                            legs_mass_matrix,
+                                                            self.nmpc_GRFs,
+                                                            self.nmpc_footholds,
+                                                            legs_qpos_idx,
+                                                            legs_qvel_idx,
+                                                            tau,
+                                                            optimize_swing,
+                                                            self.best_sample_freq,
+                                                            self.nmpc_joints_pos,
+                                                            self.nmpc_joints_vel,
+                                                            self.nmpc_joints_acc,
+                                                            self.nmpc_predicted_state)
         
 
 
@@ -206,8 +202,16 @@ class QuadrupedPyMPC_Wrapper:
             elif obs_name == 'ref_base_angles':
                 data = {'ref_base_angles': ref_state['ref_orientation']}
             elif obs_name == 'ref_feet_pos':
+                ref_feet_pos = LegsAttr(FL=ref_state['ref_foot_FL'].reshape(3,1),
+                                        FR=ref_state['ref_foot_FR'].reshape(3,1),
+                                        RL=ref_state['ref_foot_RL'].reshape(3,1),
+                                        RR=ref_state['ref_foot_RR'].reshape(3,1))
                 data = {'ref_feet_pos': ref_feet_pos}
             elif obs_name == 'ref_feet_constraints':
+                ref_feet_constraints = LegsAttr(FL=ref_state['ref_foot_FL_constraints'],
+                                                FR=ref_state['ref_foot_FR_constraints'],
+                                                RL=ref_state['ref_foot_RL_constraints'],
+                                                RR=ref_state['ref_foot_RR_constraints'])
                 data = {'ref_feet_constraints': ref_feet_constraints}
             elif obs_name == 'nmpc_GRFs':
                 data = {'nmpc_GRFs': self.nmpc_GRFs}
@@ -259,6 +263,7 @@ class QuadrupedPyMPC_Wrapper:
         """ Reset the controller."""
 
         self.wb_interface.reset(initial_feet_pos)
+        self.srbd_controller_interface.controller.reset()
         
 
     
