@@ -1,5 +1,5 @@
 ## Overview
-This repo contains a model predictive controller based on the **single rigid body model** and written in **Python**. It cames in two flavours: gradient-based via [acados](https://github.com/acados/acados) or sampling-based via [jax](https://github.com/google/jax). The controller is tested on real robots and is compatible with [Mujoco](https://mujoco.org/). See the end of this README if you want to cite this work.
+This repo contains a model predictive controller based on the **single rigid body model** and written in **Python**. It comes in two flavours: gradient-based via [acados](https://github.com/acados/acados) or sampling-based via [jax](https://github.com/google/jax). The controller is tested on real robots and is compatible with [Mujoco](https://mujoco.org/). See [the end of this README](https://github.com/iit-DLSLab/Quadruped-PyMPC?tab=readme-ov-file#citing-this-work) if you want to cite this work.
 
 
 Features gradient-based mpc:
@@ -18,25 +18,20 @@ Features sampling-based mpc:
 - implements different strategies: [random sampling](https://arxiv.org/pdf/2212.00541.pdf), [mppi](https://sites.gatech.edu/acds/mppi/), or [cemppi](https://arxiv.org/pdf/2203.16633.pdf) 
 - different control parametrizations: zero-order, linear splines or cubic splines (see [mujoco-mpc](https://arxiv.org/pdf/2212.00541.pdf))
 
+<br>
+<div style="display: flex; justify-content: space-around;">
+  <img src="./gifs/trot.gif" alt="Trot" width="30%">
+  <img src="./gifs/pace.gif" alt="Pace" width="30%">
+  <img src="./gifs/crawl.gif" alt="Crawl" width="30%">
+</div>
 
-<table >
-    <tr>
-        <th colspan="3" align="center">Experiments with Aliengo</th>
-    </tr>
-    <tr>
-        <td align="left"><img src="./gifs/trot.gif"/></td>
-        <td align="center"><img src="./gifs/pace.gif"/></td>
-        <td align="right"><img src="./gifs/crawl.gif"/></td>
-    </tr>
-    <tr>
-        <th colspan="3" align="center">Simulations with Go2</th>
-    </tr>
-    <tr>
-        <td align="left"><img src="./gifs/trot_mujoco.gif"/></td>
-        <td align="center"><img src="./gifs/pace_mujoco.gif"/></td>
-        <td align="right"><img src="./gifs/crawl_mujoco.gif"/></td>
-    </tr>
-</table>
+<div style="display: flex; justify-content: space-around;">
+  <img src="./gifs/trot_mujoco.gif" alt="Trot Mujoco" width="30%">
+  <img src="./gifs/pace_mujoco.gif" alt="Pace Mujoco" width="30%">
+  <img src="./gifs/crawl_mujoco.gif" alt="Crawl Mujoco" width="30%">
+</div>
+<br>
+
 
 
 ## Dependencies
